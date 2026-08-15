@@ -60,8 +60,14 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - `Quantity` va a escala 6, no 2: no es dinero ni impuesto, y forzarla a 2 corrompería `cantidad × precio` en unidades fraccionarias. El redondeo a escala 2 ocurre una sola vez, al calcular el importe de línea
   - `Money` lleva `java.util.Currency` (JDK, no es dependencia externa) y rechaza operar entre monedas distintas con `IllegalArgumentException`
   - Sin `double` ni `float` en el módulo. Se verificará además por ArchUnit en T-105
-- [ ] **T-101** Modelo EN 16931: `Invoice`, `InvoiceLine`, `Buyer`, `Issuer` con términos BT/BG
+- [x] **T-101** Modelo EN 16931: `Invoice`, `InvoiceLine`, `Buyer`, `Issuer` con términos BT/BG
   - Verificación: cada campo del modelo mapea a un BT/BG documentado en un comentario o en el README
+  - `mvn -pl tributary-domain test` → `Tests run: 49, Failures: 0` · `BUILD SUCCESS`. TDD: 5 archivos de test escritos primero, vistos en rojo (`cannot find symbol`), después la implementación
+  - Cada `@param` de `Issuer`, `Buyer`, `InvoiceLine`, `VatBreakdown`, `InvoiceTotals`, `Invoice` documenta su BT/BG (grep de verificación arriba). `businessKey` está documentado explícitamente como la única excepción — es ADR-003, no EN 16931
+  - Añadidos `TaxCategory` (S/AE, acotado a RC-1/2/3) y `VatBreakdown` (BG-23) que el SRS no nombra pero que RF-005/CV-05 exigen para un desglose de IVA correcto por grupo
+  - **El reparto del descuento de documento entre grupos de IVA (BG-23) usa reparto proporcional con el último grupo absorbiendo el residuo de redondeo**, para que la suma de importes imponibles por grupo sea siempre exacta. Decisión de diseño no pedida explícitamente por el SRS pero necesaria para que RC-2 (dos tipos de IVA + descuento de documento) dé un total correcto
+  - **Prueba de falsabilidad (L-004/L-012) que encontró un hueco real en el propio test:** se desactivó la absorción de residuo (todos los grupos usan reparto proporcional). El test de RC-2 (dos grupos, 7 %/19 %) **no lo detectó** — `Tests run: 4, Failures: 0` — porque 50/110 redondea hacia arriba y 60/110 hacia abajo de forma complementaria y la suma da exacta por coincidencia. Se añadió un caso de tres grupos (5 %/10 %/15 %, importes netos iguales) donde el redondeo deriva en la misma dirección en los tres grupos; bajo el algoritmo roto da `290.01` en vez de `290.00` — **sí lo detecta**. Revertido y re-verificado en verde (49/49)
+  - Este hallazgo generaliza L-012: un solo caso de ejemplo no basta para discriminar un algoritmo de reparto/redondeo; hace falta uno donde el error no pueda cancelarse por simetría
 - [ ] **T-102** Máquina de estados `DRAFT → SUBMITTING → ISSUED | ISSUED_WITH_WARNINGS | REJECTED | NEEDS_RECONCILIATION → MANUAL_REVIEW`
   - Verificación: test exhaustivo de transiciones; toda transición no declarada lanza excepción
   - Nota: `MANUAL_REVIEW` no tiene transición automática de salida (RF-008)

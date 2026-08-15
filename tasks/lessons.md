@@ -195,3 +195,17 @@ En bash, `$?` después de un `fi` es el estado del **comando compuesto `if`**, n
 Aplica directamente a lo que viene: la huella SHA-256 de T-400/T-401 tiene el mismo perfil. Una propiedad del tipo "recalcular la huella da el mismo valor" se cumple con **cualquier** canonicalización consistente, incluida una equivocada. Hace falta un vector de prueba con el hash literal esperado.
 
 **Cómo sabríamos que la regla falló:** cambiar una constante normativa deja la suite en verde. El check es mecánico y barato: por cada constante de este tipo, alterarla a su alternativa plausible y confirmar que algún test se pone rojo. Indicador temprano: una tarea cuyo único criterio de verificación es un test de propiedades, o un test de ejemplo cuyo valor esperado coincide bajo dos modos de redondeo distintos.
+
+---
+
+## L-013 · Un ejemplo de dos elementos puede cancelarse por simetría sin que el algoritmo esté bien
+
+**Fecha:** 2026-08-15 · **Origen:** hallazgo al aplicar la prueba de falsabilidad de L-012 a T-101
+
+**Qué pasó:** `InvoiceTotals.compute` reparte un descuento de documento entre grupos de IVA (BG-23) de forma proporcional, con el último grupo absorbiendo el residuo de redondeo para que la suma dé exacta. El caso RC-2 (grupos al 7 % y 19 %, descuento 10.00 sobre una base de 110.00) fue el primer test escrito para probarlo, con el resultado correcto (100.00 exacto) verificado a mano. Al desactivar la absorción de residuo como sonda de falsabilidad, **RC-2 no lo detectó**: siguió en verde. La razón es aritmética, no un defecto del test — con dos grupos que se reparten el 100 % (proporciones `p` y `1-p`), si `10·p` redondea hacia arriba entonces `10·(1-p)` redondea hacia abajo por construcción, y las dos derivas se cancelan. RC-2, sin buscarlo, había elegido un caso simétrico.
+
+**Por qué importa:** un test que pasa "por casualidad aritmética" da la misma confianza que uno que prueba algo real, hasta que alguien lo mira con sospecha. Sin la sonda de falsabilidad de L-004, este hueco habría quedado invisible: RC-2 seguiría en la suite, documentado como "la prueba de redondeo de BG-23", sin serlo.
+
+**Regla derivada:** cuando un test ejemplifica un algoritmo de reparto o redondeo, además del caso "realista" del dominio hace falta al menos un caso construido para que la deriva de redondeo **no pueda cancelarse por simetría** — en la práctica, tres o más grupos con la misma proporción nominal (aquí, tres importes netos iguales repartiendo un descuento entre sí), donde cada grupo redondea en la misma dirección. Es la generalización de L-012: no alcanza con un caso de ejemplo, hace falta uno diseñado para que el error se acumule en vez de cancelarse.
+
+**Cómo sabríamos que la regla falló:** una sonda de falsabilidad (L-004) sobre código de reparto/redondeo no encuentra ningún test que se ponga en rojo. Indicador temprano: un test de reparto con exactamente dos grupos o dos categorías — con dos elementos que suman el total, hay una probabilidad real de que cualquier error de redondeo se cancele por aritmética, no porque el código esté bien.
