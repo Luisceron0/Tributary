@@ -23,8 +23,12 @@ import java.util.Set;
  *   <li>{@link #NEEDS_RECONCILIATION} -&gt; back to {@link #SUBMITTING} to retry issuance if the
  *       regime has no record of it, or straight to {@link #ISSUED}/{@link
  *       #ISSUED_WITH_WARNINGS} if the regime confirms it was issued after all, or to {@link
- *       #MANUAL_REVIEW} (RF-008). Counting the three ambiguous attempts that trigger the last one
- *       is the reconciler's job (T-306), not this state machine's.
+ *       #REJECTED} if the regime confirms it was rejected (found while building T-306: RF-008's
+ *       own prose only narrates found-and-validated, not-found and ambiguous — it never actually
+ *       says what happens when reconciliation finds a REJECTED document, which is a real,
+ *       reachable outcome), or to {@link #MANUAL_REVIEW} (RF-008). Counting the three ambiguous
+ *       attempts that trigger the last one is the reconciler's job (T-306), not this state
+ *       machine's.
  *   <li>{@link #ISSUED}, {@link #ISSUED_WITH_WARNINGS}, {@link #REJECTED} and {@link
  *       #MANUAL_REVIEW} are terminal. A correction is a NEW document referencing this one
  *       (RF-004) — the original's state never changes again. MANUAL_REVIEW has no automatic exit
@@ -47,7 +51,8 @@ public enum DocumentState {
     table.put(DRAFT, EnumSet.of(SUBMITTING));
     table.put(SUBMITTING, EnumSet.of(ISSUED, ISSUED_WITH_WARNINGS, REJECTED, NEEDS_RECONCILIATION));
     table.put(
-        NEEDS_RECONCILIATION, EnumSet.of(SUBMITTING, ISSUED, ISSUED_WITH_WARNINGS, MANUAL_REVIEW));
+        NEEDS_RECONCILIATION,
+        EnumSet.of(SUBMITTING, ISSUED, ISSUED_WITH_WARNINGS, REJECTED, MANUAL_REVIEW));
     table.put(ISSUED, EnumSet.noneOf(DocumentState.class));
     table.put(ISSUED_WITH_WARNINGS, EnumSet.noneOf(DocumentState.class));
     table.put(REJECTED, EnumSet.noneOf(DocumentState.class));

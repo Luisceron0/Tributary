@@ -47,6 +47,7 @@ class DocumentStateTest {
             DocumentState.SUBMITTING,
             DocumentState.ISSUED,
             DocumentState.ISSUED_WITH_WARNINGS,
+            DocumentState.REJECTED,
             DocumentState.MANUAL_REVIEW));
     EXPECTED.put(DocumentState.ISSUED, EnumSet.noneOf(DocumentState.class));
     EXPECTED.put(DocumentState.ISSUED_WITH_WARNINGS, EnumSet.noneOf(DocumentState.class));
