@@ -1,5 +1,6 @@
 package com.tributary.persistence;
 
+import com.tributary.application.port.FiscalRecordPort;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,7 +25,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * lock-protected transaction — so "read the tail" and "compute against it" can never be split
  * across two different, potentially stale, views of the chain.
  */
-public final class FiscalRecordRepository {
+public final class FiscalRecordRepository implements FiscalRecordPort {
 
   /**
    * A fixed namespace for the two-key advisory lock ({@code pg_advisory_xact_lock(int, int)}).
@@ -35,17 +36,6 @@ public final class FiscalRecordRepository {
    */
   private static final int CHAIN_LOCK_NAMESPACE = 0x46_52_00_00; // "FR" for fiscal_record, padded
 
-  /** The chain's current last record — what a new record's previous_hash and sequence derive from. */
-  public record ChainHead(String hash, long sequence) {}
-
-  /** What the caller wants the new row to contain, computed from the {@link ChainHead}. */
-  public record NewRecord(String hash, String canonicalPayloadJson) {
-    public NewRecord {
-      Objects.requireNonNull(hash, "hash must not be null");
-      Objects.requireNonNull(canonicalPayloadJson, "canonicalPayloadJson must not be null");
-    }
-  }
-
   private final JdbcClient jdbc;
   private final TransactionTemplate transactionTemplate;
 
@@ -55,11 +45,7 @@ public final class FiscalRecordRepository {
         new TransactionTemplate(Objects.requireNonNull(transactionManager, "transactionManager must not be null"));
   }
 
-  /**
-   * @param computeNewRecord given the current chain head (empty for a brand-new chain) and the
-   *     sequence the new record will occupy, returns the hash and canonicalized payload to insert
-   * @return the id of the inserted row
-   */
+  @Override
   public UUID append(
       UUID invoiceId,
       String regime,
@@ -102,7 +88,7 @@ public final class FiscalRecordRepository {
                   nextSequence,
                   newRecord.hash(),
                   head.map(ChainHead::hash).orElse(null),
-                  newRecord.canonicalPayloadJson())
+                  newRecord.canonicalPayload())
               .update();
           return id;
         });
