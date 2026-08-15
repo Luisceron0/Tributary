@@ -201,9 +201,14 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ## Fase 4 — Adaptador ES / Verifactu (día 4) · paralelizable con fase 3
 
-- [ ] **T-400** Canonicalización de campos del registro de alta según RD 1007/2023
+- [x] **T-400** Canonicalización de campos del registro de alta según RD 1007/2023
   - Verificación: la huella es reproducible desde los datos persistidos
-- [ ] **T-401** Cálculo de huella SHA-256 incorporando la huella previa
+  - **Resolución de L-011 (campo pendiente sin definir en el SRS):** forma canónica = texto plano con orden de campo fijo y separadores explícitos (`CLAVE=valor|CLAVE=valor|...`), **nunca JSON** — decisión directa de L-017 (JSONB reformatea; hasta una librería JSON puede variar el orden de claves entre versiones). Campos mínimos elegidos: NIF emisor, `businessKey`, fecha de emisión, NIF comprador (vacío explícito si no aplica), moneda, base imponible, cuota, total, marca de tiempo de generación
+  - `VerifactuHasherTest.canonicalizationProducesTheExactExpectedString` fija un **literal exacto**, no una comparación contra sí mismo — cierra el hueco que L-012/L-017 señalan (una propiedad de "da lo mismo dos veces" no discrimina un formato consistente pero equivocado)
+- [x] **T-401** Cálculo de huella SHA-256 incorporando la huella previa
+  - `mvn test -pl tributary-adapter-es-verifactu -am` → `Tests run: 8, Failures: 0` (más 76 heredados de dominio/aplicación)
+  - `hashMatchesAKnownLiteralValue` fija el resultado contra un SHA-256 calculado **fuera** del código bajo prueba (`printf '...' | sha256sum`), no derivado de él
+  - **Prueba de falsabilidad:** se invirtió el orden de concatenación (`previousHash + canonicalFields` en vez de al revés). De los 8 tests, **solo el que fija el literal independiente falló** — los demás (determinismo, forma hexadecimal, "incorpora la huella previa") son todos relativos y no habrían detectado un algoritmo consistente pero equivocado. Confirma otra vez L-012: sin un valor de referencia externo, ningún test relativo prueba el algoritmo en sí. Revertido
 - [ ] **T-402** Registro de anulación vinculado al de alta (RF-004)
   - Verificación: tras anular, el verificador sigue devolviendo `INTACT`
 - [ ] **T-403** Generación del QR apuntando al verificador propio — **CV-12** (ADR-007)
