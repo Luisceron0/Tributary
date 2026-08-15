@@ -15,11 +15,89 @@
   <name>Tributary :: Persistence</name>
   <description>Repositories, Flyway migrations and chain triggers.</description>
 
+  <properties>
+    <!-- SRS 5.3: versions are pinned, never ranges. -->
+    <postgresql.version>42.7.7</postgresql.version>
+    <!--
+      "Spring Data" per SRS 6.2 means this module's data-access layer, not the Spring Boot
+      application framework — that is tributary-api's tech explicitly (its own row in the same
+      table). spring-jdbc alone gives JdbcTemplate without pulling in Spring Boot autoconfiguration,
+      which fits a schema where PostgreSQL triggers are the authority (ADR-002): explicit SQL, no
+      ORM mapping between the trigger-verified rows and a Java entity graph.
+    -->
+    <spring-jdbc.version>6.2.8</spring-jdbc.version>
+    <hikaricp.version>6.3.0</hikaricp.version>
+    <flyway.version>11.8.2</flyway.version>
+    <testcontainers.version>1.21.4</testcontainers.version>
+    <slf4j.version>2.0.17</slf4j.version>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>com.tributary</groupId>
       <artifactId>tributary-application</artifactId>
       <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>${postgresql.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-jdbc</artifactId>
+      <version>${spring-jdbc.version}</version>
+    </dependency>
+    <!--
+      Pinned explicitly (SRS 5.3: no unpinned transitive versions) at distance 1 so Maven's
+      nearest-wins mediation picks THIS 2.0.17, not HikariCP's transitive 1.7.36 — the old
+      slf4j-api uses a different binding mechanism (StaticLoggerBinder) than the 2.x SPI-based
+      slf4j-simple below expects, so the wrong version silently swallows every log line, including
+      Testcontainers' own diagnostics for why a Docker strategy failed. Found by exactly that
+      failure mode while debugging T-208.
+    -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>${slf4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.zaxxer</groupId>
+      <artifactId>HikariCP</artifactId>
+      <version>${hikaricp.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+      <version>${flyway.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+      <version>${flyway.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- Without an SLF4J binding, Testcontainers' own diagnostics (why a Docker strategy failed
+         to connect, container startup logs) are silently swallowed by the no-op logger — exactly
+         the wrong time to have no evidence. Test scope only. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>${slf4j.version}</version>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 
