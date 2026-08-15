@@ -113,6 +113,18 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
           <version>${maven-surefire-plugin.version}</version>
+          <configuration>
+            <!--
+              This is a multi-module reactor: a `-Dtest=SomeClass` filter (e.g. the
+              documented `mvn test -Dtest=ArchitectureTest`, CV-07) only matches inside
+              the one module that declares that class. Without this, surefire's default
+              fails the BUILD in every other module for finding "0 matching tests" —
+              which is not a real failure, just the filter not applying there. This does
+              NOT ignore actual test failures; testFailureIgnore stays false (the
+              default) everywhere.
+            -->
+            <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
+          </configuration>
         </plugin>
       </plugins>
     </pluginManagement>

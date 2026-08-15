@@ -209,3 +209,17 @@ Aplica directamente a lo que viene: la huella SHA-256 de T-400/T-401 tiene el mi
 **Regla derivada:** cuando un test ejemplifica un algoritmo de reparto o redondeo, además del caso "realista" del dominio hace falta al menos un caso construido para que la deriva de redondeo **no pueda cancelarse por simetría** — en la práctica, tres o más grupos con la misma proporción nominal (aquí, tres importes netos iguales repartiendo un descuento entre sí), donde cada grupo redondea en la misma dirección. Es la generalización de L-012: no alcanza con un caso de ejemplo, hace falta uno diseñado para que el error se acumule en vez de cancelarse.
 
 **Cómo sabríamos que la regla falló:** una sonda de falsabilidad (L-004) sobre código de reparto/redondeo no encuentra ningún test que se ponga en rojo. Indicador temprano: un test de reparto con exactamente dos grupos o dos categorías — con dos elementos que suman el total, hay una probabilidad real de que cualquier error de redondeo se cancele por aritmética, no porque el código esté bien.
+
+---
+
+## L-014 · Un comando de verificación documentado puede no correr nunca, y nadie lo nota en un solo módulo
+
+**Fecha:** 2026-08-15 · **Origen:** hallazgo al ejecutar T-105
+
+**Qué pasó:** `.github/copilot-instructions.md` documenta `mvn test -Dtest=ArchitectureTest` como el comando de verificación de CV-07. Al ejecutarlo tal cual, tras crear `ArchitectureTest` en `tributary-api`, falló: `No tests matching pattern "ArchitectureTest" were executed!` — porque en un reactor multi-módulo, `surefire` por defecto exige que **cada** módulo filtrado encuentre al menos un test que coincida, y solo uno de los siete módulos contiene esa clase. El comando llevaba escrito así desde la aprobación del SRS, sin que nadie lo hubiera corrido contra un proyecto Maven real todavía — se escribió contra la intención, no contra el reactor.
+
+**Por qué importa:** es exactamente la definición de §9A de un control "declarado, no verificado" — con el agravante de que el documento que lo declara es el que exige, en su propia primera línea, que todo lo demás en el repositorio ceda ante él por ser la fuente derivada del SRS. Un comando de verificación que no corre es peor que ausente: alguien lo copia, lo ve fallar, y pierde minutos dudando si el problema es el código en vez del comando — o peor, asume que el proyecto está roto.
+
+**Regla derivada:** todo comando de verificación que aparece en un documento (SRS §9A, `copilot-instructions.md`, un README) se ejecuta literalmente, carácter por carácter, la primera vez que el artefacto que verifica existe — no se asume correcto por ser plausible. Si falla por fricción de herramienta (no por el control en sí), se arregla en la configuración compartida del proyecto (aquí, `failIfNoSpecifiedTests=false` en el `maven-surefire-plugin` del POM padre) y se deja constancia de que el arreglo no afloja nada (`testFailureIgnore` permanece en su default en todos lados).
+
+**Cómo sabríamos que la regla falló:** un comando documentado produce un error de herramienta (no un fallo de test) la primera vez que alguien lo copia y lo pega. Indicador temprano: un comando de verificación en la documentación que nadie ha pegado en una terminal desde que se escribió — que es indistinguible, desde el documento, de uno que sí funciona.
