@@ -15,11 +15,28 @@
   <name>Tributary :: Adapter ES (Verifactu)</name>
   <description>Spanish chained invoicing records, hash and QR.</description>
 
+  <properties>
+    <!-- SRS 5.3: versions are pinned, never ranges. ZXing: T-403 needs a QR encoder/decoder;
+         tests decode the generated PNG back to prove the image really carries the intended
+         content, not just that the source string looked right before encoding. -->
+    <zxing.version>3.5.4</zxing.version>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>com.tributary</groupId>
       <artifactId>tributary-application</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.zxing</groupId>
+      <artifactId>core</artifactId>
+      <version>${zxing.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.zxing</groupId>
+      <artifactId>javase</artifactId>
+      <version>${zxing.version}</version>
     </dependency>
   </dependencies>
 
