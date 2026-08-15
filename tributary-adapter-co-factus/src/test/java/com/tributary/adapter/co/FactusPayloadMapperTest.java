@@ -67,6 +67,10 @@ class FactusPayloadMapperTest {
     assertEquals("Handel GmbH", customer.get("company").asText());
     assertEquals("DE", customer.get("country_code").asText());
     assertEquals("50", customer.get("identification_document_code").asText());
+    // Found against the real sandbox (T-307): Factus rejects a missing "names" with "debe ser una
+    // cadena de caracteres" even when legal_organization_code=1 — sent alongside "company", not
+    // instead of it, contradicting a literal reading of "names obligatorio solo si =2".
+    assertEquals("Handel GmbH", customer.get("names").asText());
   }
 
   @Test

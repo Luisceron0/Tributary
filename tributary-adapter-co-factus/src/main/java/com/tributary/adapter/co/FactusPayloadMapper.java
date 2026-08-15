@@ -84,6 +84,11 @@ public final class FactusPayloadMapper {
       node.put("identification", buyer.taxIdentifier().orElseThrow());
       node.put("legal_organization_code", "1"); // persona jurídica — this project's B2B thesis
       node.put("company", buyer.name());
+      // Found against the live sandbox (this session): Factus's real validator rejects a missing
+      // "names" with "debe ser una cadena de caracteres" even when legal_organization_code=1,
+      // contradicting the "obligatorio solo si =2" reading of the reference documentation —
+      // names is sent unconditionally, alongside company, not instead of it.
+      node.put("names", buyer.name());
     } else {
       // The exact shape the live sandbox echoed back for identification "222222222222".
       node.put("identification_document_code", "13"); // cédula ciudadanía

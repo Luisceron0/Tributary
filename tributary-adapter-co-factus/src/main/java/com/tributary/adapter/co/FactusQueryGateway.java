@@ -25,6 +25,17 @@ import java.util.Optional;
  * there." Confusing the two would let the reconciler retry issuance after a network blip that
  * never actually reached Factus, exactly the duplicate-fiscal-document risk ADR-003 exists to
  * prevent.
+ *
+ * <p><b>{@code externalReference} here is Factus's {@code number} (e.g. {@code
+ * "SETP990015225"}), not the CUFE.</b> Confirmed live against the real sandbox this session (T-307):
+ * the list endpoint's items carry {@code number}, {@code is_validated}, {@code reference_code} and
+ * more, but never {@code cufe} — only the original {@code POST /v2/bills/validate} response does.
+ * RF-008's prose says "se adopta el CUFE," which reads as available-on-demand; the real API does
+ * not expose it here. {@code number} is what the query endpoint can actually confirm the document
+ * by, so it is what gets adopted — the CUFE captured at the original issuance (already persisted
+ * via {@code issuance_attempt} at that time) remains the fiscal record's CUFE; reconciliation's
+ * job is confirming the document still exists and is validated, not re-fetching a value only the
+ * original response carried.
  */
 final class FactusQueryGateway {
 
@@ -89,7 +100,8 @@ final class FactusQueryGateway {
     if (!isValidated) {
       return new RegimeQueryResult(QueryOutcome.FOUND_REJECTED, Optional.empty(), List.of());
     }
-    Optional<String> cufe = match.hasNonNull("cufe") ? Optional.of(match.get("cufe").asText()) : Optional.empty();
-    return new RegimeQueryResult(QueryOutcome.FOUND_VALIDATED, cufe, List.of());
+    // "number", not "cufe" — see class-level note.
+    Optional<String> number = match.hasNonNull("number") ? Optional.of(match.get("number").asText()) : Optional.empty();
+    return new RegimeQueryResult(QueryOutcome.FOUND_VALIDATED, number, List.of());
   }
 }

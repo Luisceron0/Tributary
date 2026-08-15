@@ -44,8 +44,10 @@ class FactusQueryGatewayContractTest {
   }
 
   @Test
-  @DisplayName("a validated document found by reference_code -> FOUND_VALIDATED with its CUFE")
+  @DisplayName("a validated document found by reference_code -> FOUND_VALIDATED with its number (not cufe — see class note)")
   void foundValidated() {
+    // The live sandbox (confirmed this session, T-307) never includes "cufe" on this endpoint's
+    // list items — only "number". This response has neither field silently invented.
     wireMock.stubFor(
         get(urlPathEqualTo("/v2/bills"))
             .withQueryParam("filter[reference_code]", equalTo("biz-key-1"))
@@ -56,15 +58,14 @@ class FactusQueryGatewayContractTest {
                     .withBody(
                         """
                         {"status":"OK","message":"Solicitud exitosa","data":{"data":[
-                          {"reference_code":"biz-key-1","is_validated":true,"errors":{},
-                           "cufe":"70006549f238e38e220c03e54ae9dc43a66df1dfa54876ebcbd22e86a8d034a"}
+                          {"reference_code":"biz-key-1","is_validated":true,"errors":{},"number":"SETP990015225"}
                         ],"pagination":{"total":1}}}
                         """)));
 
     RegimeQueryResult result = gateway.query(credentials, aToken(), "biz-key-1");
 
     assertEquals(QueryOutcome.FOUND_VALIDATED, result.outcome());
-    assertEquals("70006549f238e38e220c03e54ae9dc43a66df1dfa54876ebcbd22e86a8d034a", result.externalReference().orElseThrow());
+    assertEquals("SETP990015225", result.externalReference().orElseThrow());
   }
 
   @Test
@@ -124,8 +125,8 @@ class FactusQueryGatewayContractTest {
                     .withBody(
                         """
                         {"status":"OK","message":"ok","data":{"data":[
-                          {"reference_code":"biz-key-3","is_validated":true,"errors":{},"cufe":"aaa"},
-                          {"reference_code":"biz-key-3","is_validated":true,"errors":{},"cufe":"bbb"}
+                          {"reference_code":"biz-key-3","is_validated":true,"errors":{},"number":"SETP1"},
+                          {"reference_code":"biz-key-3","is_validated":true,"errors":{},"number":"SETP2"}
                         ],"pagination":{"total":2}}}
                         """)));
 
