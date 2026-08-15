@@ -76,8 +76,14 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - Terminales sin transición saliente: `ISSUED`, `ISSUED_WITH_WARNINGS`, `REJECTED`, `MANUAL_REVIEW`. RF-004 corrige con un documento nuevo que referencia al original — el estado del original no cambia nunca
   - `Invoice` ahora carga `state`; `Invoice.draft()` construye en `DRAFT`, `Invoice.transitionTo(next)` valida contra `DocumentState` y devuelve una instancia nueva (nunca muta la original — coherente con la inmutabilidad de todo el sistema)
   - **Prueba de falsabilidad:** se quitó `NEEDS_RECONCILIATION → SUBMITTING` de la tabla. El test exhaustivo lo detectó en la primera combinación afectada: `canTransitionTo mismatch for NEEDS_RECONCILIATION -> SUBMITTING ==> expected: <true> but was: <false>`. Revertido y re-verificado en verde (55/55)
-- [ ] **T-103** Puerto `FiscalRegimePort` con `issue`, `cancel`, `query`
+- [x] **T-103** Puerto `FiscalRegimePort` con `issue`, `cancel`, `query`
   - Verificación: la interfaz no menciona ningún tipo de ningún régimen concreto
+  - Vive en `tributary-application` (§6.2: los puertos se definen ahí, no en el dominio), no en `tributary-domain`
+  - `mvn test -pl tributary-application -am` → `Tests run: 57` (55 domain + 2 application), `Failures: 0` · `BUILD SUCCESS`
+  - `FiscalRegimePortTest.mentionsNoConcreteRegimeType` verifica por reflexión que ningún tipo de retorno, parámetro o argumento genérico de `issue`/`cancel`/`query` pertenece a `com.tributary.adapter.*` — automático, no una revisión visual
+  - `IssuanceResult`/`CancellationResult`/`RegimeQueryResult` usan `externalReference` (genérico) en vez de un nombre de artefacto de régimen — el mismo puerto lo implementan CO (HTTP real), ES (inserción local en cadena) y DE (validación local de XML), y los tres procesos no tienen nada en común salvo esta forma
+  - **Prueba de falsabilidad:** se creó una clase de prueba en `com.tributary.adapter.co` y se añadió un método `default` a la interfaz que la devuelve. El test lo detectó con el mensaje exacto (`... references com.tributary.adapter.co.ScratchLeakProbe, a regime-specific adapter type`). Revertido y re-verificado en verde
+  - Nota de proceso: para compilar `tributary-application` contra `tributary-domain` sin publicar nada, se usa el reactor de Maven (`-am`), no `mvn install`
 - [ ] **T-104** Reglas de negocio EN 16931 aplicables (subconjunto `BR-*` de los tres casos de referencia)
   - Verificación: un documento que viola `BR-CO-10` es rechazado en el dominio, sin llegar al adaptador
   - Alcance = el que exigen RC-1, RC-2 y RC-3, y ni una regla más
