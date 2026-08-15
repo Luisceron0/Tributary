@@ -223,3 +223,45 @@ Aplica directamente a lo que viene: la huella SHA-256 de T-400/T-401 tiene el mi
 **Regla derivada:** todo comando de verificación que aparece en un documento (SRS §9A, `copilot-instructions.md`, un README) se ejecuta literalmente, carácter por carácter, la primera vez que el artefacto que verifica existe — no se asume correcto por ser plausible. Si falla por fricción de herramienta (no por el control en sí), se arregla en la configuración compartida del proyecto (aquí, `failIfNoSpecifiedTests=false` en el `maven-surefire-plugin` del POM padre) y se deja constancia de que el arreglo no afloja nada (`testFailureIgnore` permanece en su default en todos lados).
 
 **Cómo sabríamos que la regla falló:** un comando documentado produce un error de herramienta (no un fallo de test) la primera vez que alguien lo copia y lo pega. Indicador temprano: un comando de verificación en la documentación que nadie ha pegado en una terminal desde que se escribió — que es indistinguible, desde el documento, de uno que sí funciona.
+
+---
+
+## L-015 · No toda sonda de falsabilidad prueba algo — quitar una negación redundante no falsifica nada
+
+**Fecha:** 2026-08-15 · **Origen:** hallazgo al aplicar L-004 a T-204
+
+**Qué pasó:** `V5__application_roles.sql` otorga a `tributary_app` solo `SELECT, INSERT` sobre `fiscal_record`/`audit_event`, y añade un `REVOKE UPDATE, DELETE` explícito aunque el `GRANT` nunca los había incluido — documentado en el propio archivo como "explícito para que la ausencia se lea como decisión, no como descuido". Al aplicar la sonda de falsabilidad de L-004, el primer intento fue quitar ese `REVOKE` y re-ejecutar `ApplicationRoleGrantsTest`. Los tests siguieron en verde: el `UPDATE` seguía fallando exactamente igual, porque en PostgreSQL el permiso por defecto ya es denegar, y el `GRANT` nunca lo había concedido — el `REVOKE` era ceremonial, y quitar algo ceremonial no cambia el comportamiento.
+
+**Por qué importa:** una sonda que no puede fallar no es una prueba de falsabilidad, es teatro que se parece a una. Si me hubiera conformado con "quité una línea y el test siguió en verde, qué robusto", habría registrado confianza donde no la había — el mismo patrón que L-004 existe para prevenir, aplicado ahora al proceso de verificación en sí mismo, no al código verificado.
+
+**Regla derivada:** antes de aceptar el resultado de una sonda de falsabilidad, confirmar que la sonda **podía** haber fallado — es decir, que existe un cambio *distinto* capaz de producir el comportamiento contrario. Para permisos SQL: no alcanza con quitar un `REVOKE`; hay que **ampliar el `GRANT`** correspondiente (aquí, añadir `UPDATE` explícitamente) para demostrar que el test detecta la concesión indebida si llegara a existir. Aplica en general: modificar una guarda defensiva que ya era redundante con otra capa no es una sonda válida; hay que tocar la capa que de verdad sostiene la garantía.
+
+**Cómo sabríamos que la regla falló:** una sonda de falsabilidad se declara "pasada" (el cambio no rompió nada) sin haber verificado primero que el cambio, de haber sido real, habría producido una diferencia observable. Indicador temprano: una sonda descrita como "quité X" sin una frase que explique qué comportamiento distinto se esperaría ver si X importara.
+
+---
+
+## L-016 · Fallos de entorno pueden parecerse a fallos de diseño, y los logs que lo aclararían pueden estar silenciados
+
+**Fecha:** 2026-08-15 · **Origen:** hallazgo al montar el arnés Testcontainers de T-208
+
+**Qué pasó:** al ejecutar los primeros tests de fase 2 contra Testcontainers, todos fallaron con `IllegalStateException: Could not find a valid Docker environment` — a pesar de que `docker run hello-world` funcionaba perfectamente en la misma máquina. La causa real, oculta detrás de dos capas: (1) sin ningún binding de SLF4J activo, los logs de diagnóstico de Testcontainers (que habrían mostrado el motivo exacto) se tragaban en silencio; (2) al añadir `slf4j-simple` para verlos, **seguían** en silencio, porque `HikariCP` trae transitivamente `slf4j-api:1.7.36` que ganaba por cercanía sobre el `2.0.17` que ya usaban `archunit`/`testcontainers`, y la versión vieja usa un mecanismo de binding (`StaticLoggerBinder`) incompatible con `slf4j-simple` 2.x. Solo tras fijar `slf4j-api` explícitamente aparecieron los logs reales, que revelaron la causa de fondo: la librería `docker-java` empaquetada en `testcontainers 1.21.3` negocia la API de Docker en la versión `1.32`, y el daemon de este entorno (Docker 29.3.0) exige mínimo `1.40` — una incompatibilidad de versión entre una librería cliente algo desactualizada y un daemon muy reciente, resuelta subiendo a `testcontainers 1.21.4`.
+
+**Por qué importa:** el síntoma ("no encuentra Docker") apuntaba a un problema de configuración o permisos del entorno, y las dos primeras horas de diagnóstico se gastaron ahí (`DOCKER_HOST`, sockets, grupos de usuario) cuando el problema real era una versión de librería. El conflicto de `slf4j-api` es el tipo de defecto que el propio §5.3 pide fijar explícitamente ("sin rangos flotantes") pero que nadie ve hasta que hace falta un log que no aparece — no rompe la compilación, no rompe ningún test hasta que se necesita diagnosticar OTRA cosa.
+
+**Regla derivada:** cuando un fallo de infraestructura de test no tiene una causa obvia en el código propio, verificar primero que los logs de diagnóstico de la herramienta en cuestión son visibles (¿hay un binding SLF4J activo? ¿en qué versión?) antes de sospechar de la configuración del entorno. `mvn dependency:tree | grep slf4j` es el primer comando, no el último. Mantener `slf4j-api` fijado explícitamente en cualquier módulo que dependa de librerías con logging propio (HikariCP, Testcontainers, Flyway), no confiar en que la resolución transitiva de Maven elija la versión correcta.
+
+**Cómo sabríamos que la regla falló:** `mvn dependency:tree` muestra más de una versión de `slf4j-api` en el árbol de un módulo. Indicador temprano: un mensaje `SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder"` en la salida de cualquier build — es siempre señal de una versión vieja de `slf4j-api` ganando sobre un binding 2.x, nunca ruido inofensivo.
+
+---
+
+## L-017 · JSONB no es un espejo del texto que se le insertó — y eso rompe la reproducibilidad de una huella
+
+**Fecha:** 2026-08-15 · **Origen:** hallazgo al construir `ChainVerifier` (T-206)
+
+**Qué pasó:** `fiscal_record.canonical_payload` se diseñó como `JSONB` en `V1` — parecía la elección obvia para "carga canonicalizada" (§6.4). Al escribir `ChainVerifierTest.healthyChainIsIntact` con una cadena sana de tres registros recién insertados, el verificador reportó `BROKEN` en los tres. La causa: `SELECT '{"n":1}'::jsonb::text` en PostgreSQL devuelve `{"n": 1}` — con un espacio después de los dos puntos que el texto original no tenía. PostgreSQL normaliza el JSON al guardarlo en una columna `JSONB`; lo que se lee de vuelta no son los mismos bytes que se escribieron, son una re-serialización canónica **de PostgreSQL**, no la del sistema. Cualquier huella calculada sobre el texto original y comparada contra una recalculada desde `canonical_payload::text` divergía siempre, sin excepción — no por un error en la lógica de comparación, sino porque los dos lados nunca podían ser iguales por construcción.
+
+**Por qué importa:** RF-003 exige textualmente que "la huella es reproducible: recalcularla desde los datos persistidos da el mismo valor" — y `JSONB` viola esa propiedad de forma silenciosa y sistemática, no ocasional. Sin el verificador de T-206 exigiendo esa reproducibilidad de inmediato, este defecto habría quedado dormido hasta la fase 4 (el adaptador ES, que sí calcula huellas reales), y ahí habría parecido un bug en la canonicalización de T-400/T-401 — una tarea entera de la fase equivocada gastada depurando un problema que en realidad estaba en el tipo de columna elegido dos fases antes.
+
+**Regla derivada:** cualquier columna cuyo contenido se hashea, firma, o debe reproducirse byte a byte se declara `TEXT`, nunca `JSONB` ni ningún tipo que el motor pueda reformatear en el camino. `JSONB` es correcto para datos que se consultan o indexan (como `issuance_attempt.warnings`, que se queda en `JSONB` a propósito); es incorrecto para datos que se verifican criptográficamente. La pregunta a hacerse antes de elegir el tipo de una columna que alimenta un hash: "¿qué devuelve el motor si leo esto de vuelta ahora mismo, byte a byte contra lo que escribí?" — y probarlo, no asumirlo.
+
+**Cómo sabríamos que la regla falló:** una prueba de round-trip (`INSERT` de un valor conocido, `SELECT` inmediato, comparación byte a byte) falla para cualquier columna que alimente una huella. Indicador temprano: un verificador de integridad que reporta `BROKEN` en el 100 % de los casos, incluidos los que nadie tocó — esa uniformidad es la firma de un problema estructural (el tipo de dato), no de manipulación real, que sí produciría discrepancias aisladas.

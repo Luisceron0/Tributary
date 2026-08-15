@@ -122,28 +122,55 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ---
 
-## Fase 2 — Persistencia e integridad (día 2) · bloquea fases 3 y 4
+## Fase 2 — Persistencia e integridad (día 2) · bloquea fases 3 y 4 · **COMPLETA (2026-08-15)**
 
-- [ ] **T-200** Migración Flyway: esquema de SRS §6.4
+`mvn test` desde la raíz: `104/104` verde (64 dominio + 12 aplicación + 25 persistencia + 3 arquitectura), todo contra PostgreSQL 16 real vía Testcontainers, ninguna clase en H2. Cada tarea de abajo pasó al menos una prueba de falsabilidad (L-004) antes de darse por buena — para las de mayor criticidad (T-201, T-202, T-205, T-207) se probó a mano contra un contenedor desechable con `psql` **y** después se formalizó en Java, dos pasadas independientes de la misma garantía.
+
+- [x] **T-200** Migración Flyway: esquema de SRS §6.4
   - Verificación: `flyway migrate` sobre PostgreSQL 16 limpio, sin errores
-- [ ] **T-201** Trigger `BEFORE INSERT` de validación de encadenamiento en `fiscal_record`
+  - `V1__initial_schema.sql`: `issuer`, `buyer`, `invoice`, `invoice_line`, `issuance_attempt`, `fiscal_record`, `audit_event`. Aplicado a mano con `psql` contra un contenedor desechable (las 5 migraciones en orden, sin error) antes de formalizarlo en `FlywayMigrator`/Testcontainers
+  - **Resolución de A-4 (anotada en fase 0, resuelta aquí):** `invoice` **no** tiene columnas `cufe`/`number`. T-203 las pedía literalmente, pero son vocabulario de Factus en una tabla que comparten los tres regímenes — la misma violación de L-002 que T-105 persigue en el dominio, aplicada a SQL. La prueba de emisión vive en `issuance_attempt.external_reference` (genérico, espeja `IssuanceResult` de T-103); ver T-203 más abajo para cómo se verifica realmente la coherencia
+  - `DataSourceFactory` (HikariCP) + `FlywayMigrator` en `tributary-persistence` (main); `AbstractPostgresTest` + `TestFixtures` en test, base de los 25 tests de la fase
+- [x] **T-201** Trigger `BEFORE INSERT` de validación de encadenamiento en `fiscal_record`
   - Verificación: insertar un registro con `previous_hash` incorrecto es rechazado por la base de datos
-- [ ] **T-202** Trigger de inmutabilidad: rechazar `UPDATE` sobre registro encadenado — **CV-02**
+  - `V2__fiscal_record_chain_validation_trigger.sql`. Verificado a mano con `psql` en 5 casos (génesis con `previous_hash` no nulo, génesis con `sequence≠1`, `previous_hash` que no matchea ningún registro, hueco de secuencia, encadenamiento correcto) — los 5 con la salida de error exacta capturada. Formalizado en `FiscalRecordChainTriggerTest`: `Tests run: 7, Failures: 0`
+  - **Prueba de falsabilidad:** se comentó la comprobación de hueco de secuencia; `rejectsASequenceGap` (y solo ese) falló. Revertido, verde de nuevo
+- [x] **T-202** Trigger de inmutabilidad: rechazar `UPDATE` sobre registro encadenado — **CV-02**
   - Verificación: `UPDATE fiscal_record SET payload='x' WHERE id=...;` desde `psql` devuelve `ERROR`, 0 filas afectadas
-  - Evidencia: captura del error de `psql`
-- [ ] **T-203** `CHECK` de coherencia de estado: `ISSUED` implica `cufe IS NOT NULL AND number IS NOT NULL`
+  - Evidencia: captura del error de `psql` — `ERROR: fiscal_record is immutable: UPDATE is not permitted on row ... A correction is a NEW row that references this one (RF-004), never an edit.` También probado `DELETE`, mismo resultado, datos intactos confirmados con `SELECT`
+  - `V3__immutability_triggers.sql`. **Cubre también `DELETE`** y **también `audit_event`**, más allá de lo que ADR-002/CV-02 piden literalmente (solo `UPDATE`, solo `fiscal_record`) — justificado: el trigger protege contra T-001 (acceso directo a la base de datos), que un `REVOKE` a nivel de rol (T-204) no cubre si alguien se conecta con una credencial distinta; `audit_event` necesita la misma garantía de solo-apéndice por §5.3
+  - Formalizado en `ImmutabilityTriggerTest`: `Tests run: 3, Failures: 0`
+  - **Prueba de falsabilidad:** se comentó el trigger de `DELETE` únicamente. Solo `rejectsDelete` falló — `rejectsUpdate` y el test de `audit_event` siguieron en verde, confirmando que el test es específico y no un falso positivo genérico. Revertido
+- [x] **T-203** `CHECK` de coherencia de estado: `ISSUED` implica `cufe IS NOT NULL AND number IS NOT NULL`
   - Verificación: insertar el estado imposible es rechazado
-- [ ] **T-204** Rol de aplicación con `REVOKE UPDATE, DELETE` sobre `fiscal_record` y `audit_event`
+  - **No es un `CHECK` de una sola fila** (ver A-4 en T-200): la prueba real es cruzada entre tablas ("`ISSUED` implica que existe un `issuance_attempt` aceptado con `external_reference` no nulo"), y un `CHECK` de PostgreSQL no puede expresar una condición entre tablas — hace falta un trigger, coherente con el razonamiento de ADR-002. `V4__invoice_issued_state_coherence_trigger.sql`. Fija además el orden de transacción: el `issuance_attempt` debe insertarse **antes** de actualizar `invoice.state`, que es exactamente el orden que ya describe RF-002
+  - Verificado a mano con `psql`: `DRAFT→ISSUED` sin prueba previa → `ERROR`; con `issuance_attempt` insertado primero → pasa
+  - Formalizado en `InvoiceStateCoherenceTriggerTest`: `Tests run: 5, Failures: 0`, incluidos dos casos que un `EXISTS` ingenuo dejaría pasar: `external_reference NULL` y `outcome = REJECTED`
+  - **Prueba de falsabilidad:** se quitó la condición `external_reference IS NOT NULL` del `EXISTS`. Solo `aNullExternalReferenceDoesNotSatisfyTheInvariant` falló. Revertido
+- [x] **T-204** Rol de aplicación con `REVOKE UPDATE, DELETE` sobre `fiscal_record` y `audit_event`
   - Verificación: la aplicación falla al intentar un `UPDATE`, incluso con el trigger deshabilitado
-- [ ] **T-205** Bloqueo consultivo por `chainId` para inserción serializada
+  - `V5__application_roles.sql`: `tributary_app` (`NOLOGIN`) con `SELECT/INSERT/UPDATE` en tablas normales, `SELECT/INSERT` (nunca `UPDATE`/`DELETE`) en `fiscal_record`/`audit_event`. Sin contraseña en la migración — el rol real de login se aprovisiona fuera de Flyway (variables de entorno, fase 7/T-705); esto es explícito en el propio archivo, no un olvido
+  - Verificado con `SET ROLE tributary_app` desde `psql` y formalizado igual en `ApplicationRoleGrantsTest`: `Tests run: 6, Failures: 0`
+  - **Prueba de falsabilidad con hallazgo metodológico:** el primer intento (quitar el `REVOKE`) no cambió nada — el `REVOKE` era redundante porque el `GRANT` nunca había incluido `UPDATE`/`DELETE`, así que "quitar una negación redundante" no prueba nada. La sonda correcta es **ampliar el `GRANT`** (`GRANT ... UPDATE ...`) para demostrar que el test SÍ lo detectaría si el permiso existiera; hecho así, `applicationRoleCannotUpdateFiscalRecord` falló exactamente como debía. Revertido. Ver L-015
+- [x] **T-205** Bloqueo consultivo por `chainId` para inserción serializada
   - Verificación: 20 hilos insertando en la misma cadena producen una secuencia sin huecos ni duplicados
-- [ ] **T-206** Verificador de cadena RF-006 con usuario de base de datos de solo lectura
+  - `FiscalRecordRepository.append()`: `pg_advisory_xact_lock(namespace, hashtext(chainId))` (dos claves, con espacio de nombres fijo para no colisionar con un futuro uso no relacionado de locks consultivos) dentro de la misma transacción que lee la cola de la cadena e inserta. Qué huella lleva el registro nuevo **no** lo decide esta clase — es responsabilidad del adaptador ES (T-400/T-401, fase 4); esta clase solo entrega la cola actual y deja que el llamador la calcule, dentro del mismo lock
+  - `FiscalRecordRepositoryConcurrencyTest`: 20 hilos con `CountDownLatch` para maximizar la contención real → secuencia exacta `1..20`, sin huecos, cadena de `previous_hash` completamente resoluble hasta un único génesis. `Tests run: 1, Failures: 0`
+  - **Prueba de falsabilidad, la más reveladora de la fase:** se deshabilitó el lock. La carrera se reprodujo de forma **consistente en 3 corridas seguidas** (no esporádica) — confirma que 20 hilos reales sobre PostgreSQL real rompen la garantía de forma fiable sin el lock, no que "a veces podría pasar". Revertido y re-verificado en verde
+- [x] **T-206** Verificador de cadena RF-006 con usuario de base de datos de solo lectura
   - Verificación: 1.000 registros sanos → `INTACT` en < 2 s
-- [ ] **T-207** Test de detección de manipulación — **CV-03**
+  - `ChainVerifier`: recorre la cadena, recalcula cada huella y compara con la persistida, reporta el primer registro roto con su predecesor y ambas huellas, **continúa para cuantificar el alcance** (cuenta el total de discrepancias, no solo la primera). El algoritmo real de huella (T-400/T-401) todavía no existe (fase 4) — `ChainVerifier` lo recibe como dependencia inyectada en vez de asumir uno, así que fase 2 prueba la mecánica de verificación, no un algoritmo concreto
+  - Rol de solo lectura (`tributary_verifier`) verificado en `ApplicationRoleGrantsTest`: puede `SELECT`, no puede `INSERT` ni `UPDATE`
+  - Rendimiento medido real: `ChainVerifier.verify() on 1000 records: 11ms (budget 2000ms)` — **~180× más rápido** que el presupuesto. `ChainVerifierTest.performanceOnAThousandRecords`: `Tests run: 1, Failures: 0`
+- [x] **T-207** Test de detección de manipulación — **CV-03**
   - Verificación: con el trigger deshabilitado, alterar un registro intermedio hace que el verificador devuelva `BROKEN` señalando ese registro exacto
-  - Evidencia: salida del verificador. **Esta es la captura principal del portafolio**
-- [ ] **T-208** Tests con Testcontainers para todo lo anterior
+  - Evidencia: `ChainVerifierTest.tamperDetection` — cadena de 3 registros, se deshabilita el trigger de `UPDATE`, se altera el `canonical_payload` del **segundo**, se reactiva el trigger, se verifica: `brokenRecordId` = el segundo registro exacto (no el primero ni el tercero), `predecessorId` = el primero, `totalMismatches` = 1, `recordsVerified` = 3. `Tests run: 3, Failures: 0` (incluye este caso). **Esta es la captura principal del portafolio**
+  - **Prueba de falsabilidad — la más importante de toda la fase 2:** se invirtió la comparación del verificador (`recomputed.equals(hash)` en vez de `!recomputed.equals(hash)`). Los 3 tests fallaron, y específicamente `tamperDetection` falló porque con la comparación invertida un registro **manipulado se reporta como `Intact`** — el falso negativo que §9A señala como "peor que no tener el control, porque genera confianza injustificada". Revertido y re-verificado en verde
+- [x] **T-208** Tests con Testcontainers para todo lo anterior
   - Verificación: la suite corre contra PostgreSQL real, no H2
+  - `grep -ri h2database` sobre `pom.xml` y el árbol de dependencias → sin resultados. Los 25 tests de `tributary-persistence` extienden `AbstractPostgresTest` (contenedor `postgres:16` real, `@Testcontainers`, migración real vía `FlywayMigrator`). No es una tarea aparte con su propio código — es la consecuencia de cómo se construyó todo lo anterior desde T-201
+  - **Defecto de entorno encontrado y corregido, no relacionado con SQL/dominio:** Testcontainers 1.21.3 no podía conectar con el daemon Docker de este entorno (`client version 1.32 too old, minimum 1.40`) — incompatibilidad entre la versión de `docker-java` empaquetada y un daemon Docker muy reciente (29.3.0). Corregido subiendo a `testcontainers 1.21.4`. Ver L-016
+  - **Segundo defecto de entorno, independiente:** `HikariCP` trae `slf4j-api:1.7.36` transitivamente, que gana por cercanía sobre la versión `2.0.17` que ya usaban `archunit`/`testcontainers`, rompiendo el binding de logging silenciosamente (por eso el primer defecto fue tan difícil de diagnosticar — los logs de diagnóstico de Testcontainers estaban siendo tragados). Corregido fijando `slf4j-api:2.0.17` explícito en el POM. Ver L-016
 
 ---
 
