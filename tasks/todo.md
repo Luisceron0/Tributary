@@ -49,7 +49,9 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ---
 
-## Fase 1 — Dominio y puertos (día 1) · bloquea todo lo demás
+## Fase 1 — Dominio y puertos (día 1) · bloquea todo lo demás · **COMPLETA (2026-08-15)**
+
+`mvn test` desde la raíz: `79/79` verde, 0 dependencias de compile/runtime en `tributary-domain`, ArchUnit (CV-07 + lexemas + aislamiento de adaptadores) en verde. Cada tarea de abajo tiene su propia evidencia de ejecución real, y cada una pasó por al menos una prueba de falsabilidad (L-004) antes de darse por buena. Sigue la fase 2 (persistencia e integridad) — bloqueada hasta ahora, ya puede arrancar.
 
 - [x] **T-100** Value objects `Money`, `TaxRate`, `Quantity` con `BigDecimal` escala 2, `HALF_UP`
   - Verificación: test de propiedades jqwik — para cualquier combinación, base + impuesto = total con escala 2
@@ -106,12 +108,17 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
     - Aislamiento de dominio + léxico: una clase `com.tributary.domain.ScratchArchProbe` con un campo `cufe` y un método que devuelve `java.sql.Connection` → las dos reglas fallaron a la vez, cada una con su mensaje (`field ...#cufe contains forbidden regime-specific lexeme "cufe"` y la violación de dependencia hacia `java.sql..`)
     - Aislamiento de adaptadores: dos clases sonda en `com.tributary.adapter.co` y `com.tributary.adapter.es` (compiladas dentro de `tributary-application` para no crear una dependencia real entre módulos de adaptador ni siquiera temporalmente) con una referencia cruzada → `Rule 'slices matching ... should not depend on each other' was violated`
     - Las tres reglas quedaron en verde tras revertir
-- [ ] **T-106** Caso de uso RF-001 con `businessKey` determinístico
+- [x] **T-106** Caso de uso RF-001 con `businessKey` determinístico
   - Verificación: dos ejecuciones idénticas producen la misma clave; conteo en repositorio = 1
   - **Derivación decidida el 2026-08-15:** `businessKey = SHA-256(issuerId ‖ saleId)`, donde `saleId` es un identificador externo de la venta, **obligatorio en el request**. RF-001 dice "derivado determinísticamente de la venta" sin decir de qué campos; esto lo fija
   - Motivo del descarte del hash de contenido: dos pedidos genuinamente distintos con las mismas líneas el mismo día colapsarían en una sola clave, y el sistema se negaría a emitir la segunda factura sin forma de forzarla. La identidad de una venta la declara el llamante, no la infiere el contenido
   - Consecuencia en el contrato: `POST /api/v1/invoices` gana un campo obligatorio `saleId`. Actualizar §6.5 y el OpenAPI de T-707
   - Test negativo: un `saleId` ausente o vacío es `422`, nunca una clave generada por defecto. Un `businessKey` con un componente aleatorio o temporal rompe ADR-003 entero
+  - `mvn test` (repo completo) → `Tests run: 79` (64 domain + 12 application + 3 architecture), `Failures: 0` · `BUILD SUCCESS`
+  - `RegisterInvoiceUseCase` vive en `tributary-application` (orquestación transaccional, §6.2), no en el dominio. Puerto nuevo `InvoiceRepository` (`findByBusinessKey`, `save`, `countByBusinessKey` — el conteo literal que RF-001 exige). Implementación real en `tributary-persistence` es fase 2 (T-2xx); por ahora hay un `InMemoryInvoiceRepository` **de test**, bajo `src/test`, nunca empaquetado
+  - `RegisterInvoiceResult` es una interfaz `sealed` con cuatro casos que calcan los flujos alternativos de RF-001 1:1 — `Created`/`AlreadyDrafted` → `201`, `Conflict` → `409`, `Invalid` → `422` con la lista completa de violaciones. Sellada a propósito: el día que la API (fase 7) haga el `switch`, el compilador exige cubrir los cuatro casos
+  - **Orden invertido respecto a la prosa de RF-001, documentado en el código.** RF-001 lista "2. valida reglas de negocio · 3. calcula totales" en ese orden; la implementación construye el `Invoice` (que calcula totales) y **después** llama a `EN16931BusinessRules.validate()`, porque `BR-CO-10` necesita el total ya calculado para poder compararlo. Como `Invoice.draft()` es la única vía de construcción y siempre calcula con la misma fórmula que la regla verifica (T-104), el orden es observacionalmente idéntico para cualquier invocador: nada se persiste antes de que la validación pase, que es la garantía real que pide RF-001
+  - **Prueba de falsabilidad — la más directa a un criterio literal del SRS hasta ahora:** se deshabilitó la comprobación de idempotencia (`Optional<Invoice> existing = Optional.empty()` a fuego). El test que verifica exactamente lo que RF-001 pide como criterio de aceptación (dos peticiones idénticas → un documento) lo detectó de inmediato: `expected: <AlreadyDrafted> but was: <Created>`. Revertido y re-verificado en verde (79/79)
 
 ---
 
