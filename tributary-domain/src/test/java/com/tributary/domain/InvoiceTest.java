@@ -29,9 +29,42 @@ class InvoiceTest {
 
     assertAll(
         () -> assertEquals("biz-key-1", invoice.businessKey()),
+        () -> assertEquals(DocumentState.DRAFT, invoice.state()),
         () -> assertEquals(ISSUER, invoice.issuer()),
         () -> assertEquals(BUYER, invoice.buyer()),
         () -> assertEquals(Money.of("119.00", EUR), invoice.totals().taxInclusiveAmount()));
+  }
+
+  @Test
+  void transitionToProducesANewInvoiceRatherThanMutatingTheOriginal() {
+    InvoiceLine line =
+        InvoiceLine.standardRate(
+            "1", "Widgets", Quantity.of("1", "C62"), Money.of("100.00", EUR), Money.zero(EUR),
+            TaxRate.ofPercent("19"));
+    Invoice draft =
+        Invoice.draft(
+            "biz-key-1", ISSUER, BUYER, EUR, LocalDate.of(2026, 8, 15), List.of(line), Money.zero(EUR));
+
+    Invoice submitting = draft.transitionTo(DocumentState.SUBMITTING);
+
+    assertAll(
+        () -> assertEquals(DocumentState.DRAFT, draft.state(), "the original is never mutated"),
+        () -> assertEquals(DocumentState.SUBMITTING, submitting.state()),
+        () -> assertEquals(draft.businessKey(), submitting.businessKey()),
+        () -> assertEquals(draft.totals(), submitting.totals()));
+  }
+
+  @Test
+  void transitionToRejectsAnUndeclaredTransition() {
+    InvoiceLine line =
+        InvoiceLine.standardRate(
+            "1", "Widgets", Quantity.of("1", "C62"), Money.of("100.00", EUR), Money.zero(EUR),
+            TaxRate.ofPercent("19"));
+    Invoice draft =
+        Invoice.draft(
+            "biz-key-1", ISSUER, BUYER, EUR, LocalDate.of(2026, 8, 15), List.of(line), Money.zero(EUR));
+
+    assertThrows(IllegalStateException.class, () -> draft.transitionTo(DocumentState.ISSUED));
   }
 
   @Test

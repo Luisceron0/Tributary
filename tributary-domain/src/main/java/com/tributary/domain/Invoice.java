@@ -16,6 +16,7 @@ import java.util.Objects;
  *
  * @param businessKey the deterministic identity used for idempotent issuance (ADR-003). Not an
  *     EN 16931 term — it is Tributary's own idempotency design, not the standard's.
+ * @param state the document's position in the {@link DocumentState} lifecycle (SRS 6.4)
  * @param issuer BG-4, Seller
  * @param buyer BG-7, Buyer
  * @param currency BT-5, Invoice currency code
@@ -28,6 +29,7 @@ import java.util.Objects;
  */
 public record Invoice(
     String businessKey,
+    DocumentState state,
     Issuer issuer,
     Buyer buyer,
     Currency currency,
@@ -38,6 +40,7 @@ public record Invoice(
 
   public Invoice {
     businessKey = Preconditions.requireNonBlank(businessKey, "businessKey");
+    Objects.requireNonNull(state, "state must not be null");
     Objects.requireNonNull(issuer, "issuer must not be null");
     Objects.requireNonNull(buyer, "buyer must not be null");
     Objects.requireNonNull(currency, "currency must not be null");
@@ -51,7 +54,7 @@ public record Invoice(
     Objects.requireNonNull(totals, "totals must not be null");
   }
 
-  /** Builds a draft invoice, computing its totals from the given lines and allowance. */
+  /** Builds a draft invoice in {@link DocumentState#DRAFT}, computing totals from lines and allowance. */
   public static Invoice draft(
       String businessKey,
       Issuer issuer,
@@ -62,6 +65,21 @@ public record Invoice(
       Money documentLevelAllowance) {
     InvoiceTotals totals = InvoiceTotals.compute(currency, lines, documentLevelAllowance);
     return new Invoice(
-        businessKey, issuer, buyer, currency, issueDate, lines, documentLevelAllowance, totals);
+        businessKey, DocumentState.DRAFT, issuer, buyer, currency, issueDate, lines,
+        documentLevelAllowance, totals);
+  }
+
+  /**
+   * Returns a NEW invoice in {@code next}, validated against {@link DocumentState}'s transition
+   * table. This invoice is never mutated — see the class-level note on immutability.
+   *
+   * @throws IllegalStateException if {@code next} is not a declared transition from {@link
+   *     #state()}
+   */
+  public Invoice transitionTo(DocumentState next) {
+    DocumentState validated = state.transitionTo(next);
+    return new Invoice(
+        businessKey, validated, issuer, buyer, currency, issueDate, lines,
+        documentLevelAllowance, totals);
   }
 }
