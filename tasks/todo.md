@@ -176,8 +176,18 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ## Fase 3 — Adaptador CO / Factus (día 3) · paralelizable con fase 4
 
-- [ ] **T-300** Cliente OAuth2 con refresh de vuelo único
+**Credenciales de sandbox recibidas del usuario 2026-08-15, nunca hardcodeadas.** Van en `.env` (gitignorado desde T-001) con nombres `FACTUS_SANDBOX_*`; `.env.example` (commiteado) documenta la forma sin valores. Verificado con un canario real: forzar `git add -f .env` y commitear da `EXIT CODE: 1` — el hook las protege igual que a cualquier otro secreto.
+
+**Investigación de la API real, antes de escribir el adaptador:** la documentación de `developers.factus.com.co` bloquea `WebFetch` (403), así que el esquema real se obtuvo en dos vías independientes que coincidieron: (a) sondeo directo contra el sandbox con las credenciales reales — autenticación real (`POST /oauth/token`, `HTTP_STATUS=200`), `GET /v2/numbering-ranges` (rango real `id=389`, "Factura de Venta"), y una validación de factura real completa con CUFE real devuelto; (b) un artefacto de documentación oficial de Factus que el usuario aportó directamente, que confirmó campo por campo lo ya sondeado. **Confirmación empírica notable:** la llamada real devolvió `is_validated: true` con `errors` no vacío (tres notificaciones DIAN tipo RUT01/FAJ44b/FAJ43b) — exactamente el escenario que RF-002 describe como `ISSUED_WITH_WARNINGS`, observado en producción del sandbox antes de escribir una sola línea de T-305.
+
+- [x] **T-300** Cliente OAuth2 con refresh de vuelo único
   - Verificación: 20 hilos con token expirado disparan exactamente una petición de refresh
+  - `FactusOAuth2Client` (bloqueo de doble verificación, lógica pura sin HTTP) + `FactusAuthGateway` (HTTP real vía `java.net.http.HttpClient`, sin Spring — §6.2 solo asigna Spring Boot a `tributary-api`) + `FactusToken`/`FactusCredentials`. `Tests run: 7, Failures: 0` (3 del cliente + 4 del gateway contra WireMock)
+  - Forma de request/response confirmada en vivo: `POST /oauth/token` con `{grant_type:"password", client_id, client_secret, username, password}` → `{token_type:"Bearer", expires_in:3600, access_token, refresh_token}`. WireMock reproduce exactamente esta forma, no una inventada
+  - `client_secret` y `password` nunca aparecen en un mensaje de excepción — verificado con test dedicado, no solo declarado
+  - **Prueba de falsabilidad 1 (single-flight):** se quitó el `synchronized` del cliente. El test de 20 hilos detectó `20` llamadas de refresh en las 3 corridas, de forma consistente (no esporádica). Revertido
+  - **Prueba de falsabilidad 2 (parseo):** se ignoró `expires_in` del gateway (fijado a 1s). `parsesTheTokenResponse` lo detectó. Revertido
+  - Nota de proceso: `WireMockExtension` con el DSL estático (`stubFor`/`verify` importados estáticamente) apunta a un cliente global que asume el puerto 8080 salvo `WireMock.configureFor(...)`; con puerto dinámico hay que usar los métodos de instancia (`wireMock.stubFor(...)`). Encontrado como fallo real (`Connection refused: localhost:8080`) y corregido
 - [ ] **T-301** Limitador saliente a 60 req/min con ventana deslizante
   - Verificación: 200 peticiones seguidas sin un solo 429; ninguna ventana de 60 s supera 60 peticiones
 - [ ] **T-302** Manejo de `429`: respetar `Retry-After` con jitter, registrar como incidente

@@ -15,11 +15,41 @@
   <name>Tributary :: Adapter CO (Factus)</name>
   <description>Colombian clearance regime via the Factus API.</description>
 
+  <properties>
+    <!-- SRS 5.3: versions are pinned, never ranges. -->
+    <jackson.version>2.22.1</jackson.version>
+    <!--
+      org.wiremock:wiremock is still 4.0.0-beta.38 after 38 betas with no stable cut — this is
+      the last real release under the pre-rename coordinates (com.github.tomakehurst), used here
+      instead for something T-305's whole contract-test strategy depends on.
+    -->
+    <wiremock.version>3.0.1</wiremock.version>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>com.tributary</groupId>
       <artifactId>tributary-application</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <!--
+      HTTP transport is java.net.http.HttpClient (JDK-built-in, zero dependency) — SRS 6.2 names
+      Spring Boot only for tributary-api; this module doesn't need it just to make HTTP calls.
+      Jackson handles the Factus JSON payload: ~30 fields across nested objects/arrays (customer,
+      items, taxes, payment_details) — hand-built JSON string concatenation at this depth is a
+      maintenance and injection-shaped-bug risk that a real parser exists specifically to remove.
+    -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.github.tomakehurst</groupId>
+      <artifactId>wiremock-jre8</artifactId>
+      <version>${wiremock.version}</version>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 
