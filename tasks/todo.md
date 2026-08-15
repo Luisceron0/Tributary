@@ -51,8 +51,15 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ## Fase 1 — Dominio y puertos (día 1) · bloquea todo lo demás
 
-- [ ] **T-100** Value objects `Money`, `TaxRate`, `Quantity` con `BigDecimal` escala 2, `HALF_UP`
+- [x] **T-100** Value objects `Money`, `TaxRate`, `Quantity` con `BigDecimal` escala 2, `HALF_UP`
   - Verificación: test de propiedades jqwik — para cualquier combinación, base + impuesto = total con escala 2
+  - `mvn -pl tributary-domain test` → `Tests run: 27, Failures: 0, Errors: 0` · `BUILD SUCCESS`. 10 propiedades jqwik × 1000 casos cada una
+  - TDD: los cuatro archivos de test se escribieron primero y se vieron fallar (`cannot find symbol: class Money / TaxRate`) antes de existir la implementación
+  - **Prueba de falsabilidad ejecutada (L-004):** con `ROUNDING = HALF_EVEN` la suite falla — `Tests run: 27, Failures: 3` en `MoneyTest.roundsHalfUpAwayFromZero`, `MoneyTest.multiplicationRounds` y `TaxRateTest.computesTaxOnBase`. Revertido a `HALF_UP` y re-verificado en verde
+  - ⚠️ **Las 10 propiedades pasaron bajo `HALF_EVEN`** (`Tests run: 10, Failures: 0`). El criterio de verificación de esta tarea, tal como está escrito, no detecta una deriva del modo de redondeo. Ver L-012
+  - `Quantity` va a escala 6, no 2: no es dinero ni impuesto, y forzarla a 2 corrompería `cantidad × precio` en unidades fraccionarias. El redondeo a escala 2 ocurre una sola vez, al calcular el importe de línea
+  - `Money` lleva `java.util.Currency` (JDK, no es dependencia externa) y rechaza operar entre monedas distintas con `IllegalArgumentException`
+  - Sin `double` ni `float` en el módulo. Se verificará además por ArchUnit en T-105
 - [ ] **T-101** Modelo EN 16931: `Invoice`, `InvoiceLine`, `Buyer`, `Issuer` con términos BT/BG
   - Verificación: cada campo del modelo mapea a un BT/BG documentado en un comentario o en el README
 - [ ] **T-102** Máquina de estados `DRAFT → SUBMITTING → ISSUED | ISSUED_WITH_WARNINGS | REJECTED | NEEDS_RECONCILIATION → MANUAL_REVIEW`

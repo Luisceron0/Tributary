@@ -179,3 +179,19 @@ En bash, `$?` después de un `fi` es el estado del **comando compuesto `if`**, n
 **Regla derivada:** al empezar una fase se recorre el SRS buscando referencias con artículo determinado a artefactos que el documento no define —"los tres casos", "el subconjunto aplicable", "los campos mínimos", "la venta"—, y cada una se resuelve **antes** de escribir código de esa fase, registrando la resolución en `tasks/todo.md`. Un adjetivo como "determinístico" o "canonicalizado" describe una propiedad, no una especificación: hay que fijar los campos y su orden.
 
 **Cómo sabríamos que la regla falló:** un test de una fase tardía obliga a cambiar el modelo de dominio de la fase 1. Indicador temprano: una tarea cuya implementación arranca con una decisión que nadie tomó por escrito, o un criterio de verificación que cita un artefacto sin ruta de archivo ni definición. Aplicar la misma sospecha a lo que queda: "los campos mínimos del RD 1007/2023" (RF-003) y "la huella sobre los campos canonicalizados" (T-400) todavía no están fijados.
+
+---
+
+## L-012 · Un test de propiedades no puede detectar una deriva del modo de redondeo
+
+**Fecha:** 2026-08-15 · **Origen:** hallazgo al ejecutar la prueba de falsabilidad de T-100
+
+**Qué pasó:** T-100 quedó en verde con 27 tests, de los cuales 10 son propiedades jqwik a 1000 casos cada una — 10.000 combinaciones generadas. Aplicando L-004 se cambió `Money.ROUNDING` de `HALF_UP` a `HALF_EVEN` para ver la suite fallar. Falló: `Tests run: 27, Failures: 3`. Pero los tres fallos fueron **tests de ejemplo**. Las diez propiedades pasaron todas: `FiscalArithmeticPropertyTest ... Tests run: 10, Failures: 0`.
+
+**Por qué importa:** el criterio de verificación que el SRS asigna a T-100 es exactamente el que no detecta el fallo — *"test de propiedades jqwik: para cualquier combinación, base + impuesto = total con escala 2"*. Y no es un defecto de los tests escritos, es estructural: asociatividad, conmutatividad, escala 2 y `base + impuesto = total` son **leyes**, y se cumplen bajo `HALF_UP`, `HALF_EVEN`, `HALF_DOWN` y `FLOOR` por igual. El modo de redondeo no es una ley del álgebra, es una **elección normativa**, y una elección solo se fija clavando valores concretos. Con jqwik como único criterio, alguien "limpia" el redondeo a `HALF_EVEN` —que es el default bancario y el de `Math.round` en media docena de librerías— y los 10.000 casos siguen verdes mientras cada factura se desvía un céntimo.
+
+**Regla derivada:** las propiedades cubren las leyes; los ejemplos clavan las decisiones. Toda constante normativa —modo de redondeo, escala, orden de canonicalización, algoritmo de huella— necesita al menos un test de ejemplo con un valor elegido para **discriminar** esa constante de sus alternativas plausibles, y el comentario dice cuál sería el resultado bajo la alternativa. En `MoneyTest`: `0.10 × 0.05 = 0.0050` da `0.01` bajo `HALF_UP` y `0.00` bajo `HALF_EVEN`. Un caso que da lo mismo bajo ambos modos —como `0.095 → 0.10`— no discrimina nada aunque parezca un empate.
+
+Aplica directamente a lo que viene: la huella SHA-256 de T-400/T-401 tiene el mismo perfil. Una propiedad del tipo "recalcular la huella da el mismo valor" se cumple con **cualquier** canonicalización consistente, incluida una equivocada. Hace falta un vector de prueba con el hash literal esperado.
+
+**Cómo sabríamos que la regla falló:** cambiar una constante normativa deja la suite en verde. El check es mecánico y barato: por cada constante de este tipo, alterarla a su alternativa plausible y confirmar que algún test se pone rojo. Indicador temprano: una tarea cuyo único criterio de verificación es un test de propiedades, o un test de ejemplo cuyo valor esperado coincide bajo dos modos de redondeo distintos.
