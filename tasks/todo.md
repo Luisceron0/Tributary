@@ -188,12 +188,18 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - **Prueba de falsabilidad 1 (single-flight):** se quitó el `synchronized` del cliente. El test de 20 hilos detectó `20` llamadas de refresh en las 3 corridas, de forma consistente (no esporádica). Revertido
   - **Prueba de falsabilidad 2 (parseo):** se ignoró `expires_in` del gateway (fijado a 1s). `parsesTheTokenResponse` lo detectó. Revertido
   - Nota de proceso: `WireMockExtension` con el DSL estático (`stubFor`/`verify` importados estáticamente) apunta a un cliente global que asume el puerto 8080 salvo `WireMock.configureFor(...)`; con puerto dinámico hay que usar los métodos de instancia (`wireMock.stubFor(...)`). Encontrado como fallo real (`Connection refused: localhost:8080`) y corregido
-- [ ] **T-301** Limitador saliente a 60 req/min con ventana deslizante
+- [x] **T-301** Limitador saliente a 60 req/min con ventana deslizante
   - Verificación: 200 peticiones seguidas sin un solo 429; ninguna ventana de 60 s supera 60 peticiones
+  - `FactusRateLimiter.reserveSlot(Instant)` es la función de decisión pura (dado "ahora", ¿cuándo puedo proceder?), separada de `acquire()` que sí duerme — permite probar 200+ peticiones sin esperar minutos reales. Ventana deslizante real, no un balde de tamaño fijo que resetea en el tick del reloj
+  - `Tests run: 4, Failures: 0`, incluido el criterio literal: 200 peticiones simultáneas → ninguna ventana de 60s con más de 60 permisos
+  - **Prueba de falsabilidad:** error de límite (`<=` en vez de `<`, permite 61). Detectado por 2 tests, incluido el que verifica el criterio literal. Revertido
 - [ ] **T-302** Manejo de `429`: respetar `Retry-After` con jitter, registrar como incidente
   - Verificación: forzado con WireMock, el reintento ocurre después del tiempo indicado
-- [ ] **T-303** Traducción del dominio al payload de Factus
+- [x] **T-303** Traducción del dominio al payload de Factus
   - Verificación: el JSON generado valida contra el ejemplo de referencia campo a campo
+  - `FactusPayloadMapper` con Jackson. `Tests run: 8, Failures: 0` contra el esquema confirmado en vivo
+  - Decisiones documentadas en el propio código (varias veces sin equivalente en el dominio, inevitable — ADR-001 prohíbe el vocabulario de régimen HACIA el dominio, no al revés): `payment_details` por defecto a un único pago en efectivo por el total exacto (el dominio no modela forma de pago, §3 lo excluye); `unit_measure_code` traduce solo los códigos UN/ECE que RC-1/2/3 usan (`C62`→`94`), cualquier otro falla fuerte en vez de adivinar; `standard_code` fijo en `"999"` ("adopción del contribuyente", la designación de Factus para "sin clasificación específica"); comprador con NIF → persona jurídica (tesis B2B del proyecto), sin NIF → el "consumidor final" confirmado empíricamente contra el sandbox real; línea reverse-charge (RC-3) → `is_excluded:true` al 0 % (DIAN no tiene un mecanismo de inversión del sujeto pasivo estilo UE; el texto del motivo de exención EN 16931 no tiene dónde ir en el esquema de Factus y se descarta, simplificación de alcance declarada, no un olvido)
+  - **Verificación adicional en el sandbox real, más allá de lo pedido:** se reconstruyó a mano el JSON exacto que produce `FactusPayloadMapper` para una `Invoice` estilo RC-1 con comprador sin NIF, y se envió contra `/v2/bills/validate` real → `status: Created`, `is_validated: True`, número y CUFE reales asignados, mismas notificaciones DIAN de la sonda anterior. La forma que el mapeador produce **es** la que el sandbox acepta, no una suposición
 - [ ] **T-304** Caso de uso RF-002 con transición confirmada antes de la E/S de red
   - Verificación: el estado `SUBMITTING` es visible desde otra conexión antes de que la petición salga
 - [ ] **T-305** Manejo de los cuatro resultados: `201` limpio, `201` con `errors`, `is_validated=false`, timeout
