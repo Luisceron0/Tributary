@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.tributary</groupId>
+    <artifactId>tributary</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>tributary-domain</artifactId>
+  <name>Tributary :: Domain</name>
+  <description>
+    EN 16931 model, invariants, fiscal arithmetic and the document state machine.
+    Plain Java 21.
+  </description>
+
+  <!--
+    ADR-001. This module declares no dependencies. That is not an oversight and
+    it is not a style preference: it is the property that makes the hexagon real
+    rather than diagrammatic, and it is verified by CV-07 (ArchUnit) plus this
+    file being exactly this short.
+
+    If a task appears to require a dependency here, the design is wrong. Stop
+    and ask. Do not add one.
+
+    Regime-specific vocabulary (cufe, reference_code, numbering_range, factus,
+    dian, aeat, verifactu, xrechnung, kosit) never appears in this module, in a
+    type name, a field name or a method name. ArchUnit checks the lexemes too,
+    because an import rule alone cannot see a field called `cufe` (lesson L-002).
+  -->
+
+</project>

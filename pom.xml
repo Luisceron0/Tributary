@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.tributary</groupId>
+  <artifactId>tributary</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>Tributary</name>
+  <description>Multi-regime fiscal issuance service (reference implementation)</description>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <!--
+    Module order follows the dependency direction of SRS 6.2: domain depends on
+    nothing, application depends on domain, adapters depend inward on
+    application and never on each other, api depends on all of them.
+  -->
+  <modules>
+    <module>tributary-domain</module>
+    <module>tributary-application</module>
+    <module>tributary-adapter-co-factus</module>
+    <module>tributary-adapter-es-verifactu</module>
+    <module>tributary-adapter-de-en16931</module>
+    <module>tributary-persistence</module>
+    <module>tributary-api</module>
+  </modules>
+
+  <properties>
+    <!--
+      SRS 8 pins Java 21 LTS. The toolchain may be newer; the release level is
+      what the SRS specifies, so it is fixed here rather than inherited from
+      whatever JDK happens to be installed.
+    -->
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!-- SRS 5.3: versions are pinned, never ranges. -->
+    <junit.version>5.12.2</junit.version>
+    <jqwik.version>1.9.3</jqwik.version>
+    <archunit.version>1.4.1</archunit.version>
+
+    <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
+    <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <!--
+    Test-only dependencies are declared here, in the parent, so that every
+    module inherits them and tributary-domain/pom.xml can carry no <dependencies>
+    block at all.
+
+    ADR-001 constrains what ships in the domain artefact: no Spring, no Jackson,
+    no JDBC, nothing at compile or runtime scope. It does not — and cannot —
+    forbid a test harness, since SRS 9 requires jqwik property-based tests and
+    90% coverage inside that very module. Keeping these here satisfies both the
+    architectural rule and T-003's literal verification criterion.
+
+    ArchUnit (CV-07) enforces the real constraint at the import level, and it
+    is not weakened by anything in this block.
+  -->
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>net.jqwik</groupId>
+      <artifactId>jqwik</artifactId>
+      <version>${jqwik.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <version>${archunit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>${maven-compiler-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire-plugin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

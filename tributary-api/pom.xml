@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>com.tributary</groupId>
+    <artifactId>tributary</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>tributary-api</artifactId>
+  <name>Tributary :: API</name>
+  <description>REST API, OAuth2, RBAC, response headers and OpenAPI.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.tributary</groupId>
+      <artifactId>tributary-application</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.tributary</groupId>
+      <artifactId>tributary-adapter-co-factus</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.tributary</groupId>
+      <artifactId>tributary-adapter-es-verifactu</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.tributary</groupId>
+      <artifactId>tributary-adapter-de-en16931</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.tributary</groupId>
+      <artifactId>tributary-persistence</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+
+</project>

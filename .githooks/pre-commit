@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+#
+# Pre-commit secret scan — SRS R-01, CV-06, lesson L-005.
+#
+# The Factus sandbox credentials already exist, so the risk is exposure, not
+# absence. CI-only scanning is too late: by the time CI runs, the secret is in
+# the history of a pushed branch.
+#
+# Fail-closed by design. If gitleaks is missing or errors, the commit is
+# REJECTED. A scanner that silently no-ops is worse than no scanner, because it
+# manufactures confidence.
+
+set -uo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+COMMIT REJECTED — gitleaks is not installed.
+
+This hook fails closed: it will not let a commit through unscanned.
+
+  ./scripts/install-gitleaks.sh
+
+(the version and SHA-256 are pinned in that script)
+EOF
+  exit 1
+fi
+
+echo "pre-commit: scanning staged changes for secrets (gitleaks $(gitleaks version))..."
+
+# Capture the scanner's status directly. Do NOT write this as
+#   if gitleaks ...; then exit 0; fi
+#   status=$?
+# because after `fi` the value of $? is the status of the *if compound*, which
+# is 0 when no branch ran — so the hook printed a rejection banner and then
+# exited 0, letting every secret through. See lesson L-008.
+gitleaks git --staged --redact --no-banner
+status=$?
+
+if [ "${status}" -eq 0 ]; then
+  exit 0
+fi
+
+cat >&2 <<'EOF'
+
+================================================================================
+COMMIT REJECTED — gitleaks found a potential secret in the staged changes.
+================================================================================
+
+Do NOT work around this by unstaging the file and committing the rest.
+
+  * If the finding is a real credential: it never reached the history, so
+    removing it from the staging area is enough THIS TIME. Move the value to an
+    environment variable. Credentials never live in code, fixtures, comments,
+    test resources or default values.
+
+  * If a secret has ALREADY reached a commit — even locally, even unpushed —
+    the remediation is to ROTATE THE CREDENTIAL. Deleting the file or rewriting
+    the history does not un-leak it. Rotate first, clean up second.
+    (SRS R-01, threat T-003, severity CRITICAL.)
+
+  * If it is a false positive: add a narrowly scoped allowlist entry to
+    .gitleaks.toml with a comment explaining why, in its own commit. Never
+    broaden the rule and never use --no-verify.
+
+================================================================================
+EOF
+
+# Never `exit ${status}` blindly: if the scanner ever exits 0 on this path the
+# hook would pass. This path is only reached on failure, so it exits non-zero.
+exit 1

@@ -1,0 +1,46 @@
+# --- Secrets (SRS R-01, T-003 threat, lesson L-005) -------------------------
+# Credentials come from environment variables only. If a secret ever reaches a
+# commit, the remediation is to ROTATE THE CREDENTIAL, not to delete the file.
+.env
+.env.*
+!.env.example
+*.p12
+*.pem
+*.key
+*.jks
+*.keystore
+*.pfx
+secrets/
+credentials.json
+
+# --- Build ------------------------------------------------------------------
+target/
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+dependency-reduced-pom.xml
+
+# --- Third-party artefacts fetched by CI (ADR-008, T-012) -------------------
+# The KoSIT validator binary is downloaded and checksum-verified; the checksum
+# file itself IS versioned, the artefact is not.
+validator/*.jar
+validator/*.zip
+validator/scenarios/
+!validator/*.sha256
+
+# --- Tooling / IDE ----------------------------------------------------------
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+
+# --- OS ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# --- Logs and local evidence ------------------------------------------------
+*.log
+logs/
+evidence/local/
