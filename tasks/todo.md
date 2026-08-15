@@ -193,8 +193,10 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - `FactusRateLimiter.reserveSlot(Instant)` es la función de decisión pura (dado "ahora", ¿cuándo puedo proceder?), separada de `acquire()` que sí duerme — permite probar 200+ peticiones sin esperar minutos reales. Ventana deslizante real, no un balde de tamaño fijo que resetea en el tick del reloj
   - `Tests run: 4, Failures: 0`, incluido el criterio literal: 200 peticiones simultáneas → ninguna ventana de 60s con más de 60 permisos
   - **Prueba de falsabilidad:** error de límite (`<=` en vez de `<`, permite 61). Detectado por 2 tests, incluido el que verifica el criterio literal. Revertido
-- [ ] **T-302** Manejo de `429`: respetar `Retry-After` con jitter, registrar como incidente
+- [x] **T-302** Manejo de `429`: respetar `Retry-After` con jitter, registrar como incidente
   - Verificación: forzado con WireMock, el reintento ocurre después del tiempo indicado
+  - Implementado dentro de `FactusBillGateway` (junto a T-305, comparten el mismo ciclo de request/respuesta): un `429` nunca se trata como ninguno de los cuatro resultados normales; se espera `Retry-After` (forma delay-seconds) + jitter aleatorio (0–500 ms), se reintenta **una vez**, y si el reintento también da `429` el resultado final es `UNREACHABLE` — nunca se reintenta indefinidamente
+  - `retriesAfter429`: escenario WireMock con estado (`429` con `Retry-After: 1` → éxito), tiempo real transcurrido medido → `≥ 1s`, exactamente 2 peticiones verificadas. `Tests run: 5, Failures: 0`
 - [x] **T-303** Traducción del dominio al payload de Factus
   - Verificación: el JSON generado valida contra el ejemplo de referencia campo a campo
   - `FactusPayloadMapper` con Jackson. `Tests run: 8, Failures: 0` contra el esquema confirmado en vivo
@@ -202,8 +204,11 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - **Verificación adicional en el sandbox real, más allá de lo pedido:** se reconstruyó a mano el JSON exacto que produce `FactusPayloadMapper` para una `Invoice` estilo RC-1 con comprador sin NIF, y se envió contra `/v2/bills/validate` real → `status: Created`, `is_validated: True`, número y CUFE reales asignados, mismas notificaciones DIAN de la sonda anterior. La forma que el mapeador produce **es** la que el sandbox acepta, no una suposición
 - [ ] **T-304** Caso de uso RF-002 con transición confirmada antes de la E/S de red
   - Verificación: el estado `SUBMITTING` es visible desde otra conexión antes de que la petición salga
-- [ ] **T-305** Manejo de los cuatro resultados: `201` limpio, `201` con `errors`, `is_validated=false`, timeout
+- [x] **T-305** Manejo de los cuatro resultados: `201` limpio, `201` con `errors`, `is_validated=false`, timeout
   - Verificación: contract tests con WireMock para los cuatro; `errors` se preserva íntegro
+  - `FactusBillGateway.validate()` devuelve directamente `IssuanceResult` (el tipo de T-103), sin inventar un tipo paralelo. Los cuatro casos formalizados con WireMock, con las formas de respuesta confirmadas en vivo esta sesión: limpio → `ACCEPTED`; `is_validated=true` con `errors` no vacío → `ACCEPTED_WITH_WARNINGS` (con las **dos** advertencias preservadas íntegras, no solo la primera); `is_validated=false` → `REJECTED`; fallo de conexión (`Fault.CONNECTION_RESET_BY_PEER`) → `UNREACHABLE`, nunca confundido con `REJECTED`
+  - `data.errors` es un **objeto** clave→mensaje por regla DIAN (`{"RUT01": "...", "FAJ44b": "..."}`), no un array — confirmado en vivo, no asumido
+  - **Prueba de falsabilidad:** se colapsó la distinción `ACCEPTED`/`ACCEPTED_WITH_WARNINGS` (cualquier `is_validated=true` → `ACCEPTED`). `acceptedWithWarnings` lo detectó — es exactamente el escenario que confirmé en el sandbox real antes de escribir el test. Revertido
 - [ ] **T-306** Reconciliador RF-008: consulta obligatoria antes de reintentar
   - Verificación: test con mock que afirma el **orden** de llamadas — ninguna emisión sin consulta previa
 - [ ] **T-307** Test de caos — **CV-10**
