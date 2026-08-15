@@ -19,6 +19,10 @@ target/
 .mvn/timing.properties
 dependency-reduced-pom.xml
 
+# jqwik's local run cache (seeds, last-failure replay). Binary, non-deterministic,
+# regenerated every test run — never something to version.
+.jqwik-database
+
 # --- Third-party artefacts fetched by CI (ADR-008, T-012) -------------------
 # The KoSIT validator binary is downloaded and checksum-verified; the checksum
 # file itself IS versioned, the artefact is not.
