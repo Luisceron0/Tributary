@@ -83,6 +83,16 @@ class ReconcileInvoiceUseCaseTest {
     public long countByBusinessKey(String businessKey) {
       return byKey.containsKey(businessKey) ? 1 : 0;
     }
+
+    @Override
+    public boolean tryTransition(String businessKey, DocumentState from, DocumentState to) {
+      Invoice current = byKey.get(businessKey);
+      if (current == null || current.state() != from) {
+        return false;
+      }
+      byKey.put(businessKey, current.transitionTo(to));
+      return true;
+    }
   }
 
   private static final class NoOpIssuanceAttemptPort implements IssuanceAttemptPort {

@@ -148,6 +148,23 @@ public final class JdbcInvoiceRepository implements InvoiceRepository {
         .single();
   }
 
+  @Override
+  public boolean tryTransition(String businessKey, DocumentState from, DocumentState to) {
+    Objects.requireNonNull(businessKey, "businessKey must not be null");
+    Objects.requireNonNull(from, "from must not be null");
+    Objects.requireNonNull(to, "to must not be null");
+
+    // The WHERE clause is the compare in compare-and-swap: this UPDATE affects a row only if the
+    // persisted state is still exactly `from` at the instant Postgres evaluates it, and Postgres
+    // serializes concurrent UPDATEs to the same row — so of N concurrent callers racing this same
+    // statement for the same businessKey, exactly one gets rows-affected = 1 and the rest get 0.
+    int rowsAffected =
+        jdbc.sql("UPDATE invoice SET state = ?, updated_at = now() WHERE business_key = ? AND state = ?")
+            .params(to.name(), businessKey, from.name())
+            .update();
+    return rowsAffected == 1;
+  }
+
   private UUID upsertIssuer(Issuer issuer) {
     Optional<UUID> existing =
         jdbc.sql("SELECT id FROM issuer WHERE tax_identifier = ?")

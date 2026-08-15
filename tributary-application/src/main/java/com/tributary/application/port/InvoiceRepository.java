@@ -1,5 +1,6 @@
 package com.tributary.application.port;
 
+import com.tributary.domain.DocumentState;
 import com.tributary.domain.Invoice;
 import java.util.Optional;
 
@@ -17,4 +18,16 @@ public interface InvoiceRepository {
 
   /** The literal "count in the repository" RF-001's acceptance criterion verifies against. */
   long countByBusinessKey(String businessKey);
+
+  /**
+   * Atomically claims the transition {@code from -> to}: applies it only if the persisted state is
+   * currently exactly {@code from}, and reports whether it actually did.
+   *
+   * <p>Added while building T-308 (20 concurrent callers on the same document must produce exactly
+   * one issuance): a plain read-then-{@link #save}, done by 20 threads at once, lets every one of
+   * them observe {@code DRAFT} before any of them commits {@code SUBMITTING} — all 20 would then
+   * call the regime. This method is what a use case must use for the one transition that guards an
+   * irreversible side effect, so only the caller that genuinely wins the race proceeds.
+   */
+  boolean tryTransition(String businessKey, DocumentState from, DocumentState to);
 }

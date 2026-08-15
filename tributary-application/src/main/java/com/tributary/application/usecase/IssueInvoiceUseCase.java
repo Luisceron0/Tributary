@@ -20,6 +20,14 @@ import java.util.Optional;
  * stuck in {@code SUBMITTING} is {@link ReconcileInvoiceUseCase} (RF-008, T-306) — this use case's
  * own precondition is strictly DRAFT, matching RF-002 literally.
  *
+ * <p>The claim itself uses {@link InvoiceRepository#tryTransition}, not a plain read-then-{@link
+ * InvoiceRepository#save save}: found while building T-308 (20 concurrent callers on the same
+ * document must produce exactly one issuance) — a read-then-save lets every one of N concurrent
+ * callers observe DRAFT before any of them commits SUBMITTING, and all N would then call the
+ * regime. Only the caller for whom {@code tryTransition} actually returns {@code true} proceeds;
+ * everyone else treats it as {@link IssueInvoiceResult.InvalidState}, exactly as if they had
+ * simply lost a race to a state that was never DRAFT to begin with.
+ *
  * <p>The regime's answer is recorded via {@link IssuanceAttemptPort} BEFORE the invoice
  * transitions to ISSUED/ISSUED_WITH_WARNINGS — required by V4's own trigger (T-203), which
  * enforces that order at the database, not just here.
@@ -45,18 +53,18 @@ public final class IssueInvoiceUseCase {
   public IssueInvoiceResult execute(String businessKey) {
     Objects.requireNonNull(businessKey, "businessKey must not be null");
 
-    Optional<Invoice> found = invoiceRepository.findByBusinessKey(businessKey);
-    if (found.isEmpty()) {
-      return new IssueInvoiceResult.NotFound(businessKey);
-    }
-    Invoice draft = found.orElseThrow();
-    if (draft.state() != DocumentState.DRAFT) {
-      return new IssueInvoiceResult.InvalidState(businessKey, draft.state());
+    // Atomic claim: of any number of concurrent callers for the same businessKey, exactly one
+    // gets true here. See class-level note.
+    boolean claimed = invoiceRepository.tryTransition(businessKey, DocumentState.DRAFT, DocumentState.SUBMITTING);
+    if (!claimed) {
+      Optional<Invoice> current = invoiceRepository.findByBusinessKey(businessKey);
+      if (current.isEmpty()) {
+        return new IssueInvoiceResult.NotFound(businessKey);
+      }
+      return new IssueInvoiceResult.InvalidState(businessKey, current.orElseThrow().state());
     }
 
-    // Committed and returned BEFORE any network I/O — see class-level note.
-    Invoice submitting = draft.transitionTo(DocumentState.SUBMITTING);
-    invoiceRepository.save(submitting);
+    Invoice submitting = invoiceRepository.findByBusinessKey(businessKey).orElseThrow();
 
     IssuanceResult issuanceResult = fiscalRegimePort.issue(submitting);
 

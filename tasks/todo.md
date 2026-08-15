@@ -223,7 +223,11 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 - [ ] **T-307** Test de caos — **CV-10**
   - Verificación: matar el proceso tras el envío, reiniciar, listar por `reference_code` en Factus → exactamente 1 documento
   - Evidencia: log del proceso muerto + listado del sandbox
-- [ ] **T-308** Test de concurrencia: 20 hilos sobre el mismo documento → 1 emisión
+- [x] **T-308** Test de concurrencia: 20 hilos sobre el mismo documento → 1 emisión
+  - **Bug real encontrado al diseñar el test, antes de escribirlo:** el `IssueInvoiceUseCase` de T-304 (ya commiteada) hacía leer-y-luego-guardar (`findByBusinessKey` → `transitionTo` → `save`), que bajo concurrencia real deja que los 20 hilos lean `DRAFT` antes de que ninguno confirme `SUBMITTING` — los 20 llamarían a Factus
+  - **Corrección: `InvoiceRepository` gana `tryTransition(businessKey, from, to): boolean`**, un `UPDATE ... WHERE business_key = ? AND state = ?` atómico que solo un hilo puede ganar (PostgreSQL serializa los `UPDATE` concurrentes sobre la misma fila). `IssueInvoiceUseCase` reescrito para usarlo en el paso crítico. Los tres implementadores del puerto actualizados (`JdbcInvoiceRepository` real, y los dos dobles en memoria de T-106/T-306)
+  - `IssueInvoiceConcurrencyTest`: 20 hilos reales, Postgres real, `CountDownLatch` para maximizar contención. `Tests run: 1, Failures: 0` → exactamente 1 llamada a Factus, exactamente 1 `Issued`, exactamente 19 `InvalidState`, exactamente 1 documento en `ISSUED` al final
+  - **Prueba de falsabilidad, la más contundente de la fase 3:** se revirtió a leer-luego-guardar. Dos corridas → `18` y `9` llamadas duplicadas a Factus respectivamente (no determinístico, la firma exacta de una carrera real bajo scheduling de SO, no un número fijo). Confirma que el bug era real y que la corrección lo resuelve de raíz. Revertido
 - [x] **T-309** Guarda de entorno fail-closed
   - Verificación: el servicio se niega a arrancar contra la URL de producción sin la variable de habilitación explícita
   - `FactusEnvironment`: `resolve()` (sandbox, camino normal) vs `resolveProduction()` (exige `FACTUS_ENABLE_PRODUCTION=true`, si no `IllegalStateException`). Nombres de variable de producción (`FACTUS_PRODUCTION_*`) y sandbox (`FACTUS_SANDBOX_*`) completamente distintos — no hay forma de confundirlos por copy-paste. `resolve()` además **rechaza activamente** si la URL de sandbox configurada parece apuntar a producción (defensa contra un error de configuración, no solo el camino feliz)

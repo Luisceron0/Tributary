@@ -1,6 +1,7 @@
 package com.tributary.application.usecase;
 
 import com.tributary.application.port.InvoiceRepository;
+import com.tributary.domain.DocumentState;
 import com.tributary.domain.Invoice;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,24 +20,35 @@ final class InMemoryInvoiceRepository implements InvoiceRepository {
   private int saveCount = 0;
 
   @Override
-  public Optional<Invoice> findByBusinessKey(String businessKey) {
+  public synchronized Optional<Invoice> findByBusinessKey(String businessKey) {
     return Optional.ofNullable(byBusinessKey.get(businessKey));
   }
 
   @Override
-  public void save(Invoice invoice) {
+  public synchronized void save(Invoice invoice) {
     Objects.requireNonNull(invoice, "invoice must not be null");
     byBusinessKey.put(invoice.businessKey(), invoice);
     saveCount++;
   }
 
   @Override
-  public long countByBusinessKey(String businessKey) {
+  public synchronized long countByBusinessKey(String businessKey) {
     return byBusinessKey.containsKey(businessKey) ? 1 : 0;
   }
 
+  @Override
+  public synchronized boolean tryTransition(String businessKey, DocumentState from, DocumentState to) {
+    Invoice current = byBusinessKey.get(businessKey);
+    if (current == null || current.state() != from) {
+      return false;
+    }
+    byBusinessKey.put(businessKey, current.transitionTo(to));
+    saveCount++;
+    return true;
+  }
+
   /** Total number of {@link #save} calls across the repository's lifetime, not just distinct keys. */
-  int totalSaveCalls() {
+  synchronized int totalSaveCalls() {
     return saveCount;
   }
 }
