@@ -224,8 +224,12 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - Verificación: matar el proceso tras el envío, reiniciar, listar por `reference_code` en Factus → exactamente 1 documento
   - Evidencia: log del proceso muerto + listado del sandbox
 - [ ] **T-308** Test de concurrencia: 20 hilos sobre el mismo documento → 1 emisión
-- [ ] **T-309** Guarda de entorno fail-closed
+- [x] **T-309** Guarda de entorno fail-closed
   - Verificación: el servicio se niega a arrancar contra la URL de producción sin la variable de habilitación explícita
+  - `FactusEnvironment`: `resolve()` (sandbox, camino normal) vs `resolveProduction()` (exige `FACTUS_ENABLE_PRODUCTION=true`, si no `IllegalStateException`). Nombres de variable de producción (`FACTUS_PRODUCTION_*`) y sandbox (`FACTUS_SANDBOX_*`) completamente distintos — no hay forma de confundirlos por copy-paste. `resolve()` además **rechaza activamente** si la URL de sandbox configurada parece apuntar a producción (defensa contra un error de configuración, no solo el camino feliz)
+  - `Tests run: 5, Failures: 0`. Toma `Function<String,String>` en vez de leer `System.getenv()` directamente — testeable con un `Map` simple, sin depender de variables de entorno reales
+  - **Prueba de falsabilidad:** se quitó la comprobación de `FACTUS_ENABLE_PRODUCTION`. `refusesProductionWithoutExplicitEnablement` lo detectó — es el caso más crítico de los cinco. Revertido
+  - **También construido, no listado como tarea propia pero necesario para T-307/T-308:** `FactusQueryGateway` (`GET /v2/bills?filter[reference_code]=...`, forma confirmada en vivo esta sesión) y `FactusFiscalRegimeAdapter` (implementación real de `FiscalRegimePort` que une OAuth2 + limitador + payload mapper + query). `cancel()` (notas crédito, RF-004) queda sin implementar a propósito — fuera del alcance de T-3xx — y falla fuerte (`UnsupportedOperationException`) en vez de simular un no-op silencioso. Un fallo de red/servidor en la consulta mapea a `AMBIGUOUS`, **nunca** a `NOT_FOUND` — confundirlos dejaría al reconciliador reintentar una emisión tras un error de red que nunca llegó a Factus, el mismo riesgo de duplicado que ADR-003 existe para prevenir. `Tests run: 35, Failures: 0` en todo el módulo
 
 ---
 
