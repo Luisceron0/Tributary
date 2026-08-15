@@ -93,4 +93,20 @@ public final class FiscalRecordRepository implements FiscalRecordPort {
           return id;
         });
   }
+
+  @Override
+  public Optional<RecordSummary> findById(UUID recordId) {
+    Objects.requireNonNull(recordId, "recordId must not be null");
+    return jdbc.sql("SELECT id, hash, previous_hash, sequence, created_at FROM fiscal_record WHERE id = ?")
+        .param(recordId)
+        .query(
+            (rs, rowNum) ->
+                new RecordSummary(
+                    (UUID) rs.getObject("id"),
+                    rs.getString("hash"),
+                    Optional.ofNullable(rs.getString("previous_hash")),
+                    rs.getLong("sequence"),
+                    rs.getTimestamp("created_at").toInstant()))
+        .optional();
+  }
 }

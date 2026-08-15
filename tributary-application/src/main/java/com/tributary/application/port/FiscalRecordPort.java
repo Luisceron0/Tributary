@@ -1,5 +1,6 @@
 package com.tributary.application.port;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -24,6 +25,13 @@ public interface FiscalRecordPort {
   record NewRecord(String hash, String canonicalPayload) {}
 
   /**
+   * A minimal, PII-free view of one row — what {@code GET
+   * /api/v1/records/{id}/verification} (T-404, ADR-009) is allowed to expose: no canonical
+   * payload, no invoice reference, nothing that could leak a buyer's identity or an amount.
+   */
+  record RecordSummary(UUID id, String hash, Optional<String> previousHash, long sequence, Instant createdAt) {}
+
+  /**
    * @param computeNewRecord given the current chain head (empty for a brand-new chain) and the
    *     sequence the new record will occupy, returns the hash and canonicalized payload to insert
    * @return the id of the inserted row
@@ -34,4 +42,6 @@ public interface FiscalRecordPort {
       String recordType,
       UUID chainId,
       BiFunction<Optional<ChainHead>, Long, NewRecord> computeNewRecord);
+
+  Optional<RecordSummary> findById(UUID recordId);
 }

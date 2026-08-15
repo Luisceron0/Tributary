@@ -199,7 +199,9 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ---
 
-## Fase 4 — Adaptador ES / Verifactu (día 4) · paralelizable con fase 3
+## Fase 4 — Adaptador ES / Verifactu (día 4) · paralelizable con fase 3 · **T-400–403 completas (2026-08-15), T-404 parcial, T-405 bloqueada**
+
+`mvn test` desde la raíz: `124/124` verde. T-400/401/402/403 completas y verificadas con la misma disciplina de falsabilidad que fases 1–2. T-404 tiene su capa de aplicación lista; su capa HTTP y toda T-405 dependen de que `tributary-api` tenga un servidor REST real, que es literalmente la tarea de fase 7 — no se adelantó esa infraestructura para no violar la regla de "no agregues infraestructura que ninguna tarea pida todavía" en sentido inverso.
 
 - [x] **T-400** Canonicalización de campos del registro de alta según RD 1007/2023
   - Verificación: la huella es reproducible desde los datos persistidos
@@ -222,13 +224,16 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - **CV-12 se aplica en dos capas, no solo en el test:** el generador **rechaza en tiempo de ejecución** cualquier `verifierBaseUrl` que contenga un host conocido de la AEAT (`IllegalArgumentException`), no solo se confía en que el test lo detecte después. La garantía vive en el código, no únicamente en la suite que lo vigila
   - `decodedPngMatchesContentAndCarriesNoAeatHost` decodifica el PNG generado con un lector QR real (ZXing `MultiFormatReader`) y revisa el contenido decodificado — la forma más fuerte de "no hay host de la AEAT en el QR": sobre la imagen que un inspector realmente escanearía, no sobre la cadena de origen antes de codificar
   - **Prueba de falsabilidad:** se quitó la lista de rechazo de hosts AEAT. Solo `refusesAnAeatBaseUrl` falló — confirma que ese test y `noAeatHostAnywhereInContent` cubren preocupaciones distintas y complementarias (rechazo activo vs. ausencia accidental), no una duplicada. Revertido
-- [ ] **T-404** Endpoint `GET /api/v1/records/{id}/verification`
+- [~] **T-404** Endpoint `GET /api/v1/records/{id}/verification` — **parcial, capa HTTP bloqueada hasta fase 7**
   - Verificación: devuelve registro, huella, posición en cadena y declaración de modo no remitido
   - **Resuelto por ADR-009 (SRS v1.1), sin decisión pendiente.** Es la **única ruta pública sin autenticación** de todo el sistema. Cuerpo restringido a `{recordId, hash, previousHash, chainPosition, issuedAt, nonSubmittedNotice}` — sin PII, sin importes, sin identificadores fiscales
   - Test negativo obligatorio: cualquier campo fuera de esos seis en la respuesta hace fallar el test. Un endpoint público que crece por conveniencia es una fuga de PII con revisión previa aprobada
   - ⚠️ Ver bloqueante B-02: `docs/SRS-tributary.md` en el árbol de trabajo sigue en v1.0 y no contiene ADR-009 ni la fila de §6.5
-- [ ] **T-405** Test negativo: no existe ninguna ruta de API que modifique un documento emitido
+  - **Hecho:** `GetRecordVerificationUseCase` + `RecordVerificationView` en `tributary-application`, armando exactamente los seis campos de ADR-009 a partir de `FiscalRecordPort.findById` (nuevo método en el puerto, implementado en `FiscalRecordRepository`). `Tests run: 3, Failures: 0`. Prueba de falsabilidad (intercambiar `hash`/`previousHash` en el mapeo) detectada por 2 de los 3 tests; revertido
+  - **No hecho, bloqueado a propósito:** el `@RestController` real. §6.2 asigna Spring Boot específicamente a `tributary-api`, y ninguna fase anterior metió ese framework antes de que una tarea lo pidiera — T-404 es la primera que lo pide, y es literalmente la tarea de la fase 7. Traerlo ahora habría sido "agregar infraestructura que ninguna tarea de esta fase pide" en la dirección contraria (adelantarla en vez de omitirla). Queda para fase 7, con la capa de aplicación ya lista para que el controlador sea una envoltura delgada
+- [!] **T-405** Test negativo: no existe ninguna ruta de API que modifique un documento emitido — **bloqueado, no parcialmente ejecutable**
   - Verificación: barrido de todos los endpoints; ningún `PUT`/`PATCH` sobre facturas o registros
+  - A diferencia de T-404, esta tarea **no tiene versión parcial posible**: su verificación es barrer endpoints HTTP reales, y hoy no existe ninguno. Bloqueada íntegramente hasta que la fase 7 levante `tributary-api` con Spring Boot
 
 ---
 
