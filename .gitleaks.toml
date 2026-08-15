@@ -1,0 +1,24 @@
+title = "tributary gitleaks config"
+
+# Extends (does not replace) gitleaks' default ruleset. The full default
+# ruleset stays in effect; only the narrow exception below is added on top.
+# Never widen this file to a blanket path or rule exemption — see the
+# pre-commit hook's own rejection message and SRS R-01.
+[extend]
+useDefault = true
+
+[allowlist]
+description = '''
+T-307: this project's own live-chaos-test business keys are not credentials.
+FactusChaosLiveSandboxTest (and its future ES/DE equivalents, phases 5/6)
+generates a test-run correlation id as the literal string "chaos-" followed
+by java.util.UUID.randomUUID(), then records it in tasks/todo.md as real
+evidence (e.g. "businessKey=chaos-37bc1ecf-4959-4241-9c1e-d136dce01d36").
+gitleaks' generic-api-key rule fires on this only because the surrounding
+label "businessKey=" happens to contain the substring "key" — the value
+itself is a random UUID, not a secret, and cannot authenticate against
+anything. Scoped to the exact "chaos-<uuid>" shape, nothing broader.
+'''
+regexes = [
+  '''chaos-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''',
+]
