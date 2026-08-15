@@ -15,6 +15,20 @@
   <name>Tributary :: API</name>
   <description>REST API, OAuth2, RBAC, response headers and OpenAPI.</description>
 
+  <properties>
+    <!--
+      tributary-api is the only module SRS 6.2 has depending on every adapter AND persistence —
+      exactly why ArchitectureTest lives here (agreement A-2). It's also, for the same reason, the
+      only place a test can prove something that spans an adapter and persistence together (e.g.
+      T-402: "after cancelling, the verifier still returns INTACT" needs the ES adapter's hasher
+      AND persistence's real chain storage/verifier in the same test). postgresql/spring-jdbc/
+      HikariCP arrive transitively from tributary-persistence's compile-scope dependencies;
+      Testcontainers does not (test-scope dependencies aren't transitive), so it's redeclared here.
+    -->
+    <testcontainers.version>1.21.4</testcontainers.version>
+    <slf4j.version>2.0.17</slf4j.version>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>com.tributary</groupId>
@@ -40,6 +54,30 @@
       <groupId>com.tributary</groupId>
       <artifactId>tributary-persistence</artifactId>
       <version>${project.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+      <version>${slf4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${testcontainers.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>${slf4j.version}</version>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 

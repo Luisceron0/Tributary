@@ -124,6 +124,28 @@ class VerifactuHasherTest {
   }
 
   @Test
+  @DisplayName("T-402: cancellation canonicalization produces the exact expected string, referencing the alta record")
+  void cancellationCanonicalizationProducesTheExactExpectedString() {
+    String altaHash = "a".repeat(64);
+    String canonical =
+        VerifactuHasher.canonicalizeAnulacion(altaHash, "duplicate line item", GENERATED_AT);
+
+    assertEquals(
+        "REFERENCED_ALTA_HASH=" + "a".repeat(64) + "|REASON=duplicate line item|GENERATED_AT=2026-08-15T10:00:00Z",
+        canonical);
+  }
+
+  @Test
+  @DisplayName("T-402: a cancellation of a different alta record canonicalizes differently")
+  void cancellationCanonicalizationDependsOnTheReferencedRecord() {
+    String canonicalA =
+        VerifactuHasher.canonicalizeAnulacion("a".repeat(64), "reason", GENERATED_AT);
+    String canonicalB =
+        VerifactuHasher.canonicalizeAnulacion("b".repeat(64), "reason", GENERATED_AT);
+    assertNotEquals(canonicalA, canonicalB);
+  }
+
+  @Test
   @DisplayName("RF-003: reproducible — recomputing from the same persisted inputs gives the same value")
   void reproducibleFromPersistedData() {
     Invoice invoice = sampleInvoice();

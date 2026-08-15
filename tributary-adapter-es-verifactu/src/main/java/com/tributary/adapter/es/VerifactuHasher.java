@@ -48,6 +48,22 @@ public final class VerifactuHasher {
         + "|GENERATED_AT=" + generatedAt;
   }
 
+  /**
+   * T-402: the "registro de anulación" — a cancellation always references the alta record it
+   * cancels by that record's hash (RF-004: a correction is a new record that references the
+   * original, never an edit). It joins the SAME chain as any other record: {@link
+   * #hash(String, Optional)} and the chain trigger (V2) don't distinguish alta from anulación —
+   * only {@code fiscal_record.record_type} does, which this method doesn't set (the caller does,
+   * when it calls {@code FiscalRecordPort.append}).
+   */
+  public static String canonicalizeAnulacion(String referencedAltaHash, String reason, Instant generatedAt) {
+    Objects.requireNonNull(referencedAltaHash, "referencedAltaHash must not be null");
+    Objects.requireNonNull(reason, "reason must not be null");
+    Objects.requireNonNull(generatedAt, "generatedAt must not be null");
+
+    return "REFERENCED_ALTA_HASH=" + referencedAltaHash + "|REASON=" + reason + "|GENERATED_AT=" + generatedAt;
+  }
+
   /** SHA-256(canonicalFields + "|PREVIOUS_HASH=" + previousHash), lowercase hex. */
   public static String hash(String canonicalFields, Optional<String> previousHash) {
     Objects.requireNonNull(canonicalFields, "canonicalFields must not be null");
