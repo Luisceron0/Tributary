@@ -360,7 +360,11 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 - [ ] **T-602** Crypto-shredding RF-007
   - Verificación: tras la supresión, `pg_dump | grep` no encuentra el texto claro
   - Verificación: RF-006 sigue devolviendo `INTACT`
-- [ ] **T-603** Bitácora append-only con actor tomado del token, nunca del cuerpo
+- [x] **T-603** Bitácora append-only con actor tomado del token, nunca del cuerpo
+  - `AuditEventPort` (aplicación) + `JdbcAuditEventRepository`: escribe sobre `audit_event`, tabla que T-200/V3/V5 ya dejaron append-only (trigger + grants) desde fase 2 — esta clase no añade ninguna lógica de inmutabilidad propia, la autoridad sigue siendo PostgreSQL (mismo reparto que ADR-002 para `fiscal_record`)
+  - `actor` es un **parámetro** del puerto, no algo que este puerto derive — la extracción real desde un JWT validado es trabajo de fase 7 (T-009). Hasta entonces, cualquier caso de uso que llame a este puerto lo recibe explícito, igual que `IssueInvoiceUseCase` recibe sus dependencias por constructor en vez de leer estado ambiente
+  - `mvn test -pl tributary-persistence -Dtest=JdbcAuditEventRepositoryTest` → `Tests run: 3, Failures: 0`
+  - **Prueba de falsabilidad:** se intercambiaron los parámetros `actor`/`action` en el `INSERT`. Los tres tests lo detectaron. Revertido, `mvn test -pl tributary-persistence` → `Tests run: 41, Failures: 0`
 - [ ] **T-604** RBAC completo con los tres roles
 - [ ] **T-605** Matriz rol × endpoint — **CV-08**
   - Verificación: `OPERATOR` recibe 403 en supresión; `AUDITOR` recibe 403 en emisión
