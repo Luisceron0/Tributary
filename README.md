@@ -175,6 +175,7 @@ controller/DTO change so contract drift shows up as a diff.
 |---|---|
 | [`docs/SRS-tributary.md`](docs/SRS-tributary.md) | Requirements, architecture, ADRs, threat model, verification matrix. **Source of truth**, in Spanish. |
 | [`docs/adr/`](docs/adr/) | Standalone English architecture decision records |
+| [`docs/portfolio.md`](docs/portfolio.md) | Ten-minute project writeup for a technical reviewer |
 | [`tasks/todo.md`](tasks/todo.md) | Build plan and task status |
 | [`tasks/lessons.md`](tasks/lessons.md) | Design corrections and their derived rules |
 

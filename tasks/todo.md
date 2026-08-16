@@ -508,7 +508,12 @@ T-400/401/402/403 completas desde el 2026-08-15 (evidencia original: `124/124` v
     - **CV-10:** no reejecutado contra el sandbox real de Factus en esta pasada (consumiría cuota real de un sistema externo sin necesidad — la evidencia de T-307 ya es contra el sandbox real, no simulada, y sigue siendo válida). Ver la entrada de T-307 arriba para el comando y la salida exactos
   - **5. Configuración — verde:** `mvn test -Dtest=FactusEnvironmentTest` → `Tests run: 5, Failures: 0` — arranque sin `FACTUS_ENABLE_PRODUCTION` contra variables de producción rechazado (`IllegalStateException`); nombre del secreto de producción (`FACTUS_PRODUCTION_CLIENT_SECRET`) distinto del de sandbox (`FACTUS_SANDBOX_CLIENT_SECRET`), confirmado leyendo `FactusEnvironment.java`
   - Entorno de Docker Compose de esta corrida desmontado al terminar (`docker compose down -v`, `.demo/`/`.env` borrados) — nada quedó expuesto
-- [ ] **T-709** Ficha del proyecto para el portafolio, en inglés
+- [x] **T-709** Ficha del proyecto para el portafolio, en inglés
+  - `docs/portfolio.md` — distinta del README (referencia técnica completa): pensada para los diez minutos del revisor de portafolio que la propia SRS declara como audiencia (§2, fila "Evaluador técnico"), no para alguien que va a construir contra el sistema
+  - Pitch de una línea, el problema (tres modelos técnicos incompatibles en una sola venta), la tesis arquitectónica (inmutabilidad en PostgreSQL, no en Java) con la misma evidencia CV-02/CV-03 enlazada al README en vez de repetida, tabla compacta de lo verificable (no solo afirmado), tres decisiones de ingeniería curadas (no las nueve ADR completas) y los límites de alcance en una frase
+  - Autoauditoría de palabras prohibidas (riesgo R-03): `grep -n "compliant\|certified" docs/portfolio.md` → una sola aparición, "Not certified under any fiscal regime" — negación correcta
+  - Enlaces internos verificados contra los encabezados reales del README (`## Scope and honesty` → `#scope-and-honesty`, `### Tamper evidence (CV-02 / CV-03)` → `#tamper-evidence-cv-02--cv-03`), no asumidos
+  - `gitleaks detect --source . --redact` → `58 commits scanned ... no leaks found`
 
 ---
 
