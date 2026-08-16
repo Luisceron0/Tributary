@@ -13,6 +13,9 @@ import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.tngtech.archunit.library.dependencies.SlicesRuleDefinition;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.http.HttpClient;
 import java.util.List;
 import java.util.Locale;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -134,6 +137,31 @@ class ArchitectureTest {
             .callMethod(SAXParserFactory.class, "newInstance")
             .orShould()
             .callMethod(XMLInputFactory.class, "newInstance");
+
+    rule.check(allClasses);
+  }
+
+  @Test
+  @DisplayName(
+      "T-506/T-005: the DE adapter never opens an outbound network connection directly — "
+          + "it has no legitimate need to (KositValidator shells to a local subprocess, "
+          + "SecureXmlFactory disables all external entity resolution), so any HttpClient/Socket "
+          + "use here would be exactly the SSRF path T-005 describes")
+  void deAdapterNeverConstructsNetworkClientsDirectly() {
+    ArchRule rule =
+        noClasses()
+            .that()
+            .resideInAPackage("com.tributary.adapter.de..")
+            .should()
+            .callMethod(HttpClient.class, "newHttpClient")
+            .orShould()
+            .callMethod(HttpClient.class, "newBuilder")
+            .orShould()
+            .dependOnClassesThat()
+            .areAssignableTo(Socket.class)
+            .orShould()
+            .dependOnClassesThat()
+            .areAssignableTo(ServerSocket.class);
 
     rule.check(allClasses);
   }

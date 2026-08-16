@@ -281,7 +281,7 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ---
 
-## Fase 5 — Adaptador DE / XRechnung (día 5) · paralelizable con fases 3 y 4
+## Fase 5 — Adaptador DE / XRechnung (día 5) · paralelizable con fases 3 y 4 · **T-500–T-506 completas (2026-08-16)**
 
 - [x] **T-500** `SecureXmlFactory`: única vía de creación de parsers
   - DTD off, entidades externas off, `FEATURE_SECURE_PROCESSING` on, límites de tamaño y profundidad
@@ -335,8 +335,13 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
     6. **El hallazgo real más profundo, exclusivo de RC-2 (`BR-S-08`, `BR-CO-13`, `PEPPOL-EN16931-R120`):** el reparto proporcional del descuento de documento entre grupos de IVA que T-101 ya calcula correctamente (`InvoiceTotals.compute`) **no basta con quedar reflejado solo en los importes finales** (`BasisAmount`, `TaxBasisTotalAmount`) — el Schematron real recalcula esos importes de forma independiente a partir de las líneas y de los elementos `SpecifiedTradeAllowanceCharge`/`AllowanceTotalAmount` explícitos; sin ellos, no tiene forma de saber que hubo un descuento y ve una inconsistencia real. Mismo problema a nivel de línea (`PEPPOL-EN16931-R120`): el descuento total de línea del dominio (`lineDiscount`, ver `InvoiceLine.netAmount()`) se convierte a un descuento **por unidad** (`lineDiscount / quantity`) para poblar `GrossPriceProductTradePrice/AppliedTradeAllowanceCharge` + `NetPriceProductTradePrice`, estructura confirmada contra una muestra real con descuento de línea (`01.21a`) — la corrección **no reimplementa** el algoritmo de reparto de T-101, solo expone lo que ya calculó (`importe neto crudo del grupo − importe imponible ya calculado = descuento apportionado del grupo`)
   - **Prueba de falsabilidad, contra el validador real, no una réplica local:** se desactivó la emisión de `SpecifiedTradeAllowanceCharge`/`AllowanceTotalAmount` para RC-2. El validador real volvió a rechazarlo (`accepted=false exitCode=1`), mientras RC-1/RC-3 (sin descuento de documento) siguieron aceptándose sin cambios — la sonda afecta exactamente al caso que depende de la corrección, ninguno más. Revertido y re-verificado en verde (3/3)
   - **Verificación de regresión, repo completo:** `mvn test` desde la raíz → `BUILD SUCCESS`, sin fallos, incluidos los tests de T-503/T-504 que ejercitan la misma clase
-- [ ] **T-506** Allowlist de egress
+- [x] **T-506** Allowlist de egress
   - Verificación: ninguna URL contenida en un documento entrante es dereferenciada nunca (T-005)
+  - `EgressAllowlist`: la lista real de producción está **vacía a propósito, no sin configurar** — este módulo no tiene ninguna razón legítima para abrir una conexión saliente hoy (`KositValidator`, T-504, ejecuta un subproceso JVM local, sin red; `SecureXmlFactory`, T-500/T-502, deshabilita toda resolución de entidad externa). `checkAllowed(URI)` usa la lista real; `checkAllowed(URI, Set<String>)` es el núcleo testeable, para poder probar el caso positivo sin tocar la lista de producción
+  - **Regla ArchUnit compañera** (mismo patrón que T-501, en `ArchitectureTest`): ningún tipo dentro de `com.tributary.adapter.de..` puede llamar `HttpClient.newHttpClient()`/`newBuilder()` ni depender de `Socket`/`ServerSocket` — acotada estrictamente al paquete DE, nunca a `com.tributary.adapter..` entero, porque el adaptador CO sí necesita `HttpClient` de verdad (T-300-T-309) y ampliar el alcance habría roto esa dependencia legítima. Verificado explícitamente: la suite completa del repo sigue en verde, incluidos los 36 tests de `co-factus` que sí abren conexiones reales
+  - `mvn test -pl tributary-adapter-de-en16931 -Dtest=EgressAllowlistTest` → `Tests run: 4, Failures: 0`. `mvn test -pl tributary-api -Dtest=ArchitectureTest` → `Tests run: 5, Failures: 0` (4 previas + esta)
+  - **Prueba de falsabilidad:** se añadió `ScratchEgressLeakProbe` (clase descartable en `com.tributary.adapter.de`) con una llamada directa a `HttpClient.newHttpClient()`. La regla lo detectó de inmediato (`Architecture Violation ... was violated (1 times)`). Eliminada la clase y re-verificado en verde
+  - **Verificación de regresión, repo completo:** `mvn test` desde la raíz → `BUILD SUCCESS`, sin fallos
 
 ---
 
