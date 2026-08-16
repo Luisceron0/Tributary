@@ -49,6 +49,7 @@ class RbacAndJwtIntegrationTest {
     registry.add("tributary.datasource.url", POSTGRES::getJdbcUrl);
     registry.add("tributary.datasource.username", POSTGRES::getUsername);
     registry.add("tributary.datasource.password", POSTGRES::getPassword);
+    registry.add("tributary.security.allowed-hosts", () -> "localhost");
     registry.add(
         "tributary.security.jwt.public-key",
         () -> TestJwtSupport.publicKeyPem((RSAPublicKey) keyPair.getPublic()));

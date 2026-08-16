@@ -5,8 +5,10 @@ import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,6 +28,10 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * T-604/T-605/T-606 (CV-08/CV-09): RBAC by route, and JWT verification restricted to exactly one
@@ -55,9 +61,30 @@ public class SecurityConfig {
     return NimbusJwtDecoder.withPublicKey(publicKey).signatureAlgorithm(SignatureAlgorithm.RS256).build();
   }
 
+  /**
+   * T-700 / SRS 5.3's literal header list. {@code X-Content-Type-Options: nosniff} is Spring
+   * Security's own default (kept implicit); the rest are set explicitly because none of them are.
+   * CSP is specified with concrete directives even though this API returns only JSON and never
+   * HTML — SRS 5.3's own reasoning: it stops a mistyped response from ever being interpreted as
+   * executable content by a browser that receives it regardless of the intended content type.
+   */
   @Bean
-  public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-    http.csrf(csrf -> csrf.disable()) // stateless bearer-token API: no cookie/session to forge (T-700 covers headers/CORS separately)
+  public HostAllowlistFilter hostAllowlistFilter(@Value("${tributary.security.allowed-hosts}") String allowedHosts) {
+    return new HostAllowlistFilter(splitCsv(allowedHosts));
+  }
+
+  @Bean
+  public SecurityFilterChain filterChain(HttpSecurity http, HostAllowlistFilter hostAllowlistFilter,
+      @Value("${tributary.security.cors-allowed-origins:}") String corsAllowedOrigins) throws Exception {
+    http.csrf(csrf -> csrf.disable()) // stateless bearer-token API: no cookie/session to forge
+        .cors(cors -> cors.configurationSource(corsConfigurationSource(corsAllowedOrigins)))
+        .headers(
+            headers ->
+                headers
+                    .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'"))
+                    .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                    .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31_536_000)))
+        .addFilterBefore(hostAllowlistFilter, org.springframework.security.web.context.SecurityContextHolderFilter.class)
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
             authorize ->
@@ -120,6 +147,29 @@ public class SecurityConfig {
     return (authentication, context) ->
         new AuthorizationDecision(
             authentication.get().getAuthorities().stream().anyMatch(a -> authorities.contains(a.getAuthority())));
+  }
+
+  /**
+   * SRS 5.3: "CORS: allowlist explícita, nunca comodín." Empty by default — ADR-006 declares this
+   * project has no UI at all, so no browser origin needs cross-origin access unless a deployment
+   * explicitly configures one; {@code CorsConfiguration} with an empty allowed-origins list
+   * permits nothing, never falls back to {@code "*"}.
+   */
+  private static CorsConfigurationSource corsConfigurationSource(String allowedOriginsCsv) {
+    CorsConfiguration configuration = new CorsConfiguration();
+    configuration.setAllowedOrigins(List.copyOf(splitCsv(allowedOriginsCsv)));
+    configuration.setAllowedMethods(List.of("GET", "POST", "DELETE"));
+    configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", configuration);
+    return source;
+  }
+
+  private static Set<String> splitCsv(String csv) {
+    if (csv == null || csv.isBlank()) {
+      return Set.of();
+    }
+    return Arrays.stream(csv.split(",")).map(String::strip).filter(s -> !s.isBlank()).collect(java.util.stream.Collectors.toSet());
   }
 
   private static RSAPublicKey parseRsaPublicKey(String pem) {

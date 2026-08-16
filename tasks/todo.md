@@ -416,7 +416,14 @@ T-400/401/402/403 completas desde el 2026-08-15 (evidencia original: `124/124` v
 - **Prueba de falsabilidad decisiva:** se cambió el nombre del claim que `jwtAuthenticationConverter` lee de `"role"` a `"wrong_claim_name"`. El flujo RC-1 completo falló de inmediato (el token `OPERATOR` deja de tener ninguna autoridad). Revertido. (Una sonda anterior — quitar `.signatureAlgorithm(RS256)` explícito del `JwtDecoder` — **no detectó nada**: `NimbusJwtDecoder.withPublicKey(...)` ya usa RS256 por defecto sin necesidad de fijarlo, mismo patrón de L-021/L-015 — descartada como sonda no discriminante, dejada fuera de la evidencia final)
 - `mvn test` completo del repo → `BUILD SUCCESS`, sin regresiones en ninguno de los 8 módulos
 
-- [ ] **T-700** Cabeceras de respuesta y CORS con allowlist explícita
+- [x] **T-700** Cabeceras de respuesta y CORS con allowlist explícita
+  - Cabeceras literales de SRS §5.3: `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` (por defecto de Spring Security, no redundante — se mantiene implícito), `Strict-Transport-Security` (un año, `includeSubDomains`)
+  - **CORS: sin comodín nunca, vacío por defecto** — coherente con ADR-006 ("sin interfaz de usuario"): ningún origen de navegador necesita acceso entre orígenes salvo que un despliegue lo configure explícitamente. `CorsConfiguration` con lista vacía deniega todo, nunca cae a `"*"`
+  - **`HostAllowlistFilter`**: `Host` se trata como cabecera hostil igual que las demás (§5.3) — rechazada con `400` antes de llegar a cualquier controlador si no está en la allowlist explícita (`TRIBUTARY_ALLOWED_HOSTS`, sin valor por defecto)
+  - **Hallazgo real al escribir el test:** un cliente HTTP Java no deja que el código de aplicación sobrescriba la cabecera `Host` real (restricción del propio `java.net`/cliente subyacente de `TestRestTemplate`) — un intento de probar el filtro enviando un `Host` malicioso por HTTP terminaba con el `Host` real silenciosamente, dando un falso negativo (`404`, no `400`). Corregido probando `HostAllowlistFilter` directamente contra `MockHttpServletRequest`/`MockHttpServletResponse`, sin pasar por ningún cliente HTTP real
+  - **Segundo hallazgo, esperado y correcto, no un bug:** `Strict-Transport-Security` no aparece en una petición de prueba por HTTP plano — es el comportamiento correcto del propio `HstsHeaderWriter` de Spring Security (la cabecera solo tiene sentido sobre una conexión ya segura); el test no la exige ahí, documentado explícitamente por qué en vez de forzarla
+  - `mvn test -pl tributary-api -Dtest=SecurityHeadersTest` → `Tests run: 4, Failures: 0`
+  - **Prueba de falsabilidad:** se deshabilitó la condición de rechazo en `HostAllowlistFilter` (`if (false)`). `unrecognisedHostIsRejected` lo detectó de inmediato. Revertido, `mvn test` completo del repo → `BUILD SUCCESS`
 - [ ] **T-701** Logging estructurado JSON con redacción de PII y secretos
   - Verificación: ningún log contiene identificadores fiscales, tokens ni payloads completos
 - [ ] **T-702** Auditoría de SQLi incluyendo cabeceras — **CV-01**
