@@ -146,6 +146,49 @@ A control is verified when its command produces the expected binary result and t
 
 ---
 
+## Toolchain and verification discipline
+
+Third-party tooling added to this repo goes through the O.5 gate before installation — six questions, answered against a real, checked source, logged in `docs/decisiones.md`:
+
+- **Verified source:** installed from the author's official channel (documented repo/npm), not a mirror.
+- **Data surface:** what the tool reads, what it persists, whether it syncs anywhere.
+- **Light STRIDE:** can it exfiltrate secrets? Does it run commands against untrusted input?
+- **Context scope:** how much it loads into a session; is there a narrower profile.
+- **Conflict with the mandate:** does any default behavior contradict security-by-design here — e.g. an "aggressive minimalism" mode that would strip validation, authorization, or security logging.
+- **Record:** the decision and its reservations, in `docs/decisiones.md`.
+
+No tool is installed without that record — same discipline as "every control needs a binary criterion," applied to the tool instead of the code.
+
+**Installed for this project, each with its own entry and non-negotiable reservations in `docs/decisiones.md`:**
+
+- `pip install semgrep` — SAST. **A rule is never trusted without being observed failing red against a deliberately vulnerable fixture first; "0 findings" only means something once you've confirmed the rule can find anything.** Verify both directions: N findings on the vulnerable fixture, 0 on real code.
+- Trail of Bits Skills (`trailofbits/skills`, official org account only — verified copycat forks exist under near-identical names) — `variant-analysis` real and verified; installed **only** from an interactive Claude Code session (`/plugin marketplace add trailofbits/skills` then `/plugin install variant-analysis`) — this Agent SDK session has no `claude` binary and cannot run `/plugin` commands. `fix-verification` does not exist in the real marketplace under that name — do not assume it does.
+- `npx -y skills add DietrichGebert/ponytail --agent claude-code` — YAGNI decision-ladder skill. **Non-negotiable, no exception: intensity `full` (the default) only. Never `ultra`, ever, in this repo.** `ultra` questions the requirement in the same pass as the code and can classify a security control as over-engineering. This project **is**, fundamentally, security controls (immutability triggers ADR-002, RBAC, crypto-shredding ADR-004) — exactly what `ultra` tends to "simplify." Minimalism never outranks security-by-design.
+- `npx claude-mem install` — persistent cross-session memory. Verified empirically against the real generated `~/.claude-mem/settings.json`: no `cloud-sync` key exists, because the tool has no such feature — not "confirmed off," there's nothing to turn off. The real data-egress point is different: session-observation compression calls out to an LLM API (`api.anthropic.com`, optionally Gemini) — expected behavior for an AI-powered memory tool, not a hidden backend, but real external egress worth naming precisely rather than reusing a "cloud-sync" framing the tool doesn't actually have.
+- ECC (`affaan-m/ECC`) — **NOT installed.** The project's own documentation confirms unofficial mirrors/re-uploads may contain malware (independently verified, not just asserted) — official channels only: `github.com/affaan-m/ECC`, npm packages `ecc-universal`/`ecc-agentshield`, the GitHub App, plugin slug `ecc@ecc`, `ecc.tools`. **The npm package is `ecc-universal`, not a bare `ecc` — a package literally named `ecc` is not this project and installing it is exactly the typosquat risk this gate exists to catch.** Real Claude Code install path is `/plugin marketplace add` + `/plugin install ecc@ecc`, same structural blocker as Trail of Bits Skills in this environment.
+- `pipx install strix-agent` — autonomous DAST/pentest agent. Installed, **never run** without separate, explicit authorization and the effects-neutralization protocol below confirmed for that specific run. The documented precedent is real: running `sqlmap` against a contact endpoint with real side effects once injected ~5000 garbage rows into a real PII table and delivered ~200 test emails to real inboxes. "It's just a test" is not harmless.
+
+**What each test layer sees, and doesn't:**
+
+| Layer | Sees | Blind to |
+|---|---|---|
+| Unit | The class under test, in isolation | Wiring, dependency injection, real I/O |
+| Integration (Testcontainers) | Real PostgreSQL, real triggers, real transactions | The full HTTP stack, cross-service behavior |
+| `@SpringBootTest` end-to-end | The real wired application, real filter chain order | Whether any *individual* test actually asserts anything meaningful |
+| Mutation (PIT) | Whether the other layers' tests would actually catch a real defect | Correctness of a mutant that's semantically equivalent to the original (reported, not a bug) |
+
+A SAST rule, a CI gate, or a security test that was never observed failing on purpose is not verified — it is declared. This is the same principle behind the Semgrep fixture discipline above (`.semgrep/fixtures/`, T-703) and behind every falsifiability probe recorded in `tasks/lessons.md` — it now applies to mutation testing and to any new tool's own claims about itself, not only to hand-written rules.
+
+**Effects-neutralization protocol — blocking precondition before running anything that sends many requests against an endpoint with real side effects** (`sqlmap` for CV-01, `strix` in an offensive pass, contract fuzzing against the OpenAPI document):
+
+1. Confirm sandbox, never production (T-309's guard already enforces this at the credential level — confirm it again before each offensive run anyway, don't assume yesterday's check still holds).
+2. Confirm rate limits count the test traffic as part of the real quota — never assume a heavy tool and a concurrent test are isolated from each other just because they're "different tests."
+3. Confirm a positive control — one case expected to succeed, run and green — **before** launching a battery that expects failures.
+
+Not a hygiene nicety. It's the lesson behind a documented real incident: running `sqlmap` against a real-effects endpoint once injected ~5000 garbage rows into a real PII table and sent ~200 test emails to real inboxes.
+
+---
+
 ## Definition of Done for any task
 
 - [ ] Tests green in CI
@@ -157,3 +200,11 @@ A control is verified when its command produces the expected binary result and t
 - [ ] OpenAPI regenerated if contracts changed
 - [ ] ADR written if an SRS decision changed during implementation
 - [ ] `tasks/todo.md` and `tasks/lessons.md` updated
+
+**Extended gate (Q.8) — applies in addition to the above for any `CV-*` task, and any task in phases 3–6 (Factus, Verifactu, XRechnung, privacy/audit) going forward:**
+
+- [ ] Suite green **and** at least one critical test verified by mutation (`tributary-domain`/`tributary-persistence`: `mvn org.pitest:pitest-maven:mutationCoverage`, threshold 60%)
+- [ ] A context-load/startup test passes (a Spring context that fails to wire is a defect line coverage never sees)
+- [ ] If the task touches authz: a correct-role-gets-access test **and** a wrong-role-gets-denied test, as two distinct tests — not one test asserting both, since a single test can pass for the wrong reason
+- [ ] If the task uses a battery that expects failures: the positive control runs and is green first
+- [ ] If the task runs anything offensive: effects neutralized per the protocol above, confirmed for that specific run

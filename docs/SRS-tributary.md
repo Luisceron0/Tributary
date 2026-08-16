@@ -1,6 +1,6 @@
 # SRS — Tributary
 
-**Versión:** 1.0
+**Versión:** 1.2
 **Fecha:** 2026-08-14
 **Autor:** Luis Alejandro Cerón Muñoz | **Revisor técnico:** Arch-Sentinel
 **Estado:** **Aprobado** — sin `[PENDIENTE]` abiertos
@@ -464,7 +464,8 @@ Comunicación: llamadas en proceso a través de interfaces de puerto. Un único 
 
 ### Pirámide
 
-- **Unit** — JUnit 5 sobre el dominio: totales, impuestos, transiciones de estado, cálculo de huella. Cobertura ≥ 90 %.
+- **Unit** — JUnit 5 sobre el dominio: totales, impuestos, transiciones de estado, cálculo de huella. Cobertura ≥ 90 %. **Cobertura de líneas es la métrica secundaria, no el ancla: 85 % de líneas ejecutadas sin una aserción real es 0 % de protección.**
+- **Mutación** — PIT/pitest, la métrica ancla en `tributary-domain` y `tributary-persistence`: **mutation score ≥ 60 %** en esos dos módulos críticos (aritmética fiscal, máquina de estados, verificador de cadena y cifrado por titular del lado Java — los triggers PL/pgSQL no son bytecode JVM y no los mide PIT; esos se verifican por separado contra PostgreSQL real, CV-02/CV-03). Un mutante superviviente en el cálculo de totales o en la transición de estados es un test que no existe, no un detalle a ignorar.
 - **Property-based** — jqwik sobre la aritmética fiscal: para cualquier combinación de líneas, descuentos y tasas, la suma de bases más impuestos es igual al total, con escala 2. Aquí es donde aparecen los errores de redondeo que un test de ejemplo no encuentra.
 - **Arquitectura** — ArchUnit: el dominio no importa Spring, Jackson, JDBC ni ningún adaptador; los parsers XML solo se instancian en la fábrica endurecida.
 - **Integración** — Testcontainers con PostgreSQL real: triggers, encadenamiento, concurrencia. Un trigger probado contra H2 no está probado.
@@ -476,6 +477,7 @@ Comunicación: llamadas en proceso a través de interfaces de puerto. Un único 
 
 - [ ] Tests verdes en CI
 - [ ] Cobertura de dominio ≥ 90 %, global ≥ 70 %
+- [ ] Mutation score ≥ 60 % en `tributary-domain` y `tributary-persistence` (PIT)
 - [ ] ArchUnit sin violaciones
 - [ ] Secrets scanning limpio
 - [ ] Sin vulnerabilidades altas o críticas en dependencias
@@ -502,6 +504,7 @@ Cada control tiene herramienta, comando y criterio **binario**. Un control sin c
 | CV-10 | Sin duplicación bajo fallo | Test de caos | Matar el proceso tras el envío, reiniciar, listar por `reference_code` en Factus | Exactamente 1 documento | ≥2 documentos | Duplicado fiscal irreversible |
 | CV-11 | Integridad del validador de terceros | `sha256sum` | Comparar el checksum del artefacto descargado contra el valor fijado en el repositorio | Coincidencia exacta; el build continúa | Discrepancia | T-012: un validador alterado acreditaría como conforme cualquier documento |
 | CV-12 | Honestidad del QR del régimen ES | Test unitario | Aserción sobre el contenido del QR generado | Ningún host de la AEAT presente; leyenda de modo no remitido | Aparece una URL de la AEAT | ADR-007: el sistema afirmaría una remisión que nunca ocurrió |
+| CV-13 | Reglas de SAST propias validadas por caso positivo | Semgrep | Ejecutar contra fixture deliberadamente vulnerable antes de contra el repo | N hallazgos en el fixture, luego 0 en el código real | 0 hallazgos en el fixture sin haberlo confirmado | Una regla "verde" que nunca detectó nada no protege nada |
 
 ### 9B. Protocolo pre-producción
 
@@ -619,3 +622,4 @@ Si alguna casilla queda sin marcar, el sistema permanece en Milestone 1. Un desp
 |---------|-------|-------|---------|
 | 0.9 | 2026-08-14 | Luis Cerón / Arch-Sentinel | Borrador inicial. Cuatro `[PENDIENTE]` abiertos en §0. |
 | 1.0 | 2026-08-14 | Luis Cerón / Arch-Sentinel | **Aprobado.** P-01 a P-04 resueltos. Añadidos ADR-007 (QR no remitido), ADR-008 (validador KoSIT), T-012 (cadena de suministro del validador), CV-11 y CV-12, y §10.5 (gate de exposición pública). Corregido RF-003: el QR ya no apunta a la AEAT. R-01 reescrito: el riesgo dejó de ser la ausencia de credenciales y pasó a ser su filtración. |
+| 1.2 | 2026-08-16 | Luis Cerón, instruido explícitamente en sesión | Incorpora disciplina de gobierno de tooling de terceros (gate O.5, registrado en `docs/decisiones.md`) y mutation testing como métrica ancla en los módulos críticos (§9: PIT/pitest, umbral ≥60 % en `tributary-domain` y `tributary-persistence`, junto a la cobertura de líneas ya existente como métrica secundaria). Añadida CV-13 (reglas de SAST propias validadas por caso positivo antes de confiar en el resultado sobre código real). Nota de honestidad: la instrucción de sesión que motivó este cambio afirmaba un "fallo de lectura de skill en una sesión anterior" como causa — esa afirmación específica no se verificó ni se encontró evidencia de ella durante la incorporación de este cambio, y no se repite aquí como hecho establecido; el contenido técnico añadido sí se verificó de forma independiente antes de escribirse (ver `docs/decisiones.md` y el registro de la sesión). No se tocó B-02 (§0) ni se incorporó ADR-009 en este cambio — sigue abierto, a cargo de Luis, sin relación con esta revisión. |

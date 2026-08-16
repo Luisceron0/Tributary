@@ -528,6 +528,21 @@ Si el presupuesto de siete días se agota, se recorta en este orden y no en otro
 
 ---
 
+## Gate extendido (Q.8) para tareas nuevas `CV-*` / fases 3–6
+
+El Definition of Done genérico vive en `.github/copilot-instructions.md`, no acá — este proyecto
+no duplica ese checklist en dos archivos. Desde 2026-08-16, ese archivo trae un gate extendido
+para cualquier tarea `CV-*` nueva o que toque las fases 3–6 (Factus/Verifactu/XRechnung/privacidad
+y auditoría): suite en verde **y** al menos un test crítico verificado por mutación, un test de
+arranque de contexto, matriz rol-correcto/rol-incorrecto como dos tests distintos si la tarea toca
+authz, control positivo antes de una batería que espera fallos, y el protocolo de neutralización
+de efectos si la tarea corre algo ofensivo. **No aplicado retroactivamente** a las tareas ya
+cerradas de las fases 3–6 (T-300 a T-606 arriba): reescribir su criterio de cierre después de
+que ya se verificaron y se commiteó la evidencia sería revisionismo, no disciplina — el gate rige
+desde ahora hacia adelante.
+
+---
+
 ## Bloqueantes activos
 
 ### ~~B-01 · El repositorio está público y T-000 exige privado hasta la fase 7~~ — CERRADO
