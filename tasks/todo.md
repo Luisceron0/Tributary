@@ -526,13 +526,23 @@ origen separado, cliente TS **generado** desde `docs/openapi.json`.
 - [x] **T-800** ADR-010 + revisión versionada del SRS a v1.3
   - Verificación: el ADR declara qué parte de ADR-006 cae y cuál sobrevive; §6.3 y §12 del SRS coherentes con los archivos de `docs/adr/`; B-02 explícitamente no tocado
   - `docs/adr/ADR-010-web-frontend-demo-mode.md`, estado de ADR-006 actualizado en ambos lugares (archivo e índice), SRS §6.3 con ADR-010 y §12 con la entrada de v1.3 que registra que la decisión fue posterior a la advertencia sobre R-05
-- [ ] **T-801** Cliente TypeScript generado desde `docs/openapi.json`
+- [x] **T-801** Cliente TypeScript generado desde `docs/openapi.json`
   - Verificación **binaria y discriminante**: cambiar un campo del contrato debe romper el build del frontend. Si no rompe, el generador no está en la ruta crítica y el control es declarado, no verificado
-- [ ] **T-802** Módulo `tributary-web`: scaffold Vite, build integrado al reactor, lockfile fijado (SRS 5.3)
+  - `openapi-typescript` genera `src/api/schema.d.ts` desde el contrato; `openapi-fetch` (~2 KB, sin cliente generado gigante) lo consume tipado. `npm run generate:api`
+  - **Prueba de falsabilidad ejecutada:** se renombró `RecordVerificationView.hash` → `hashRenamedByProbe` en el contrato, se regeneró y `npm run build` falló con `TS2339: Property 'hash' does not exist`, señalando `RecordVerification.tsx(95,25)` — la línea exacta. Revertido, build verde de nuevo
+  - **Defecto real del contrato encontrado en el primer intento — ver L-030:** ningún endpoint declaraba esquema de respuesta (los ocho decían `{"type":"object"}`) y `POST /invoices` documentaba `200` cuando la API devuelve `201`. Causa: `ResponseEntity<?>` es opaco para springdoc. Corregido con `@ApiResponses` explícitos en los cuatro controladores + `ChainVerificationView` como tipo real (antes un `Map` inline)
+  - **Formato en el cable preservado y comprobado, no asumido:** `ChainVerificationView` usa `@JsonInclude(NON_NULL)` para que `INTACT` siga siendo exactamente `{"status":"INTACT","recordsVerified":N}` — la forma citada en el README y capturada en la corrida de §9B. Verificado serializando ambos casos con Jackson real antes de confiar en ello
+  - Contrato regenerado: los ocho endpoints ahora declaran los códigos exactos de §6.5 (`201/409/422`, `202/404/409/424`, `201/404/409`, `200/404`, `200/404/422`, `200/404`, `200/403/409`, `200`)
+- [x] **T-802** Módulo `tributary-web`: scaffold Vite, build integrado al reactor, lockfile fijado (SRS 5.3)
+  - React 19.2.8 + TypeScript 5.9.3 + Vite 8.2.1, **todas las versiones fijadas exactas** (sin `^` ni `~`), verificado con un chequeo que compara `package.json` contra el `package-lock.json` resuelto → `all pins exact`, `found 0 vulnerabilities`
+  - **Conflicto real de peer dependency, resuelto con una decisión de versión y no con `--legacy-peer-deps`:** el scaffold de Vite trae TypeScript 6.0.3, pero `openapi-typescript@7.13.0` declara `peer typescript@^5.x`. Como el generador es justamente la pieza que hace verificable al contrato, TypeScript queda fijado en 5.9.3 — documentado en el propio `package.json`
+  - Pendiente de integrar al reactor Maven (se hará junto con T-805, el SCA de npm en CI)
 - [ ] **T-803** Vistas por rol — OPERATOR registra/emite/corrige · AUDITOR lee y verifica cadena · ADMIN supresión
   - Selector de rol declarado como demo en la propia interfaz, nunca presentado como login
 - [ ] **T-804** Página pública de verificación — destino real del QR de ADR-007, sin token (ADR-009)
   - Cierra el hueco funcional: hoy una persona que escanea el QR recibe JSON crudo
+  - **Componente construido y con tipos verificados** (`src/components/RecordVerification.tsx`): renderiza los seis campos exactos que ADR-009 permite exponer (sin PII, sin importes, sin identificadores fiscales), distingue "no existe ese registro" de "el verificador no respondió" —una negativa no es un error— y muestra `nonSubmittedNotice` de forma prominente, no en letra chica: esconderlo derrotaría el control del que esta página es el extremo visible (ADR-005/ADR-007)
+  - **Falta para cerrar:** que `VerifactuQrGenerator` apunte a la URL de esta página en vez de a la del endpoint JSON, con su test de CV-12 actualizado
 - [ ] **T-805** SCA del ecosistema npm en CI, mismo umbral bloqueante que Maven (HIGH/CRITICAL)
   - Hoy `trivy` solo cubre `pom.xml`; el frontend introduce una cadena de suministro que ningún control actual ve
 - [ ] **T-806** E2E contra la pila real levantada, no contra mocks

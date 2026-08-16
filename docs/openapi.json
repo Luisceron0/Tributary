@@ -34,15 +34,21 @@
                     "required": true
                 },
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "201": {
+                        "description": "Registered in DRAFT. Idempotent: re-registering the same businessKey returns the existing draft.",
                         "content": {
                             "*/*": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/InvoiceResponseDto"
                                 }
                             }
                         }
+                    },
+                    "409": {
+                        "description": "Already registered in a different state"
+                    },
+                    "422": {
+                        "description": "EN 16931 validation violations"
                     }
                 }
             }
@@ -64,15 +70,31 @@
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "202": {
+                        "description": "Issued; body carries the regime-resolved state",
                         "content": {
                             "*/*": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/InvoiceResponseDto"
                                 }
                             }
                         }
+                    },
+                    "424": {
+                        "description": "Regime unreachable \u2014 document left in NEEDS_RECONCILIATION, never retried blindly (ADR-003)",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InvoiceResponseDto"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Invalid state for issuance"
                     }
                 }
             }
@@ -104,15 +126,14 @@
                     "required": true
                 },
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "content": {
-                            "*/*": {
-                                "schema": {
-                                    "type": "object"
-                                }
-                            }
-                        }
+                    "201": {
+                        "description": "Correcting document created (RF-004: never an edit)"
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "409": {
+                        "description": "Invalid state, or the regime refused the correction"
                     }
                 }
             }
@@ -171,10 +192,13 @@
                         "content": {
                             "*/*": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/InvoiceResponseDto"
                                 }
                             }
                         }
+                    },
+                    "404": {
+                        "description": "No invoice with that businessKey"
                     }
                 }
             }
@@ -197,14 +221,20 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "EN 16931 / XRechnung CII document",
                         "content": {
                             "application/xml": {
                                 "schema": {
-                                    "type": "object"
+                                    "type": "string"
                                 }
                             }
                         }
+                    },
+                    "404": {
+                        "description": "Not Found"
+                    },
+                    "422": {
+                        "description": "Mapping constraint violated \u2014 never a silently invalid document"
                     }
                 }
             }
@@ -228,14 +258,17 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "INTACT with recordsVerified, or BROKEN with brokenRecordId, storedHash, recomputedHash, totalMismatches and recordsVerified",
                         "content": {
                             "*/*": {
                                 "schema": {
-                                    "type": "object"
+                                    "$ref": "#/components/schemas/ChainVerificationView"
                                 }
                             }
                         }
+                    },
+                    "404": {
+                        "description": "Unknown chain, or a chain with zero records \u2014 indistinguishable, so answered honestly as not found"
                     }
                 }
             }
@@ -269,7 +302,7 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Idempotent: SUPPRESSED, or ALREADY_SUPPRESSED if the key was already destroyed (RF-007)",
                         "content": {
                             "*/*": {
                                 "schema": {
@@ -277,6 +310,12 @@
                                 }
                             }
                         }
+                    },
+                    "403": {
+                        "description": "Any role other than ADMIN \u2014 issuance and evidence destruction never share an identity (CV-08)"
+                    },
+                    "409": {
+                        "description": "An active fiscal retention obligation still covers this subject"
                     }
                 }
             }
@@ -420,6 +459,39 @@
                     "taxIdentifier"
                 ]
             },
+            "InvoiceResponseDto": {
+                "type": "object",
+                "properties": {
+                    "businessKey": {
+                        "type": "string"
+                    },
+                    "state": {
+                        "type": "string"
+                    },
+                    "issuerTaxIdentifier": {
+                        "type": "string"
+                    },
+                    "buyerName": {
+                        "type": "string"
+                    },
+                    "currency": {
+                        "type": "string"
+                    },
+                    "issueDate": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "taxExclusiveAmount": {
+                        "type": "number"
+                    },
+                    "taxTotal": {
+                        "type": "number"
+                    },
+                    "taxInclusiveAmount": {
+                        "type": "number"
+                    }
+                }
+            },
             "CorrectionRequestDto": {
                 "type": "object",
                 "properties": {
@@ -455,6 +527,32 @@
                     },
                     "nonSubmittedNotice": {
                         "type": "string"
+                    }
+                }
+            },
+            "ChainVerificationView": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string"
+                    },
+                    "recordsVerified": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "brokenRecordId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "storedHash": {
+                        "type": "string"
+                    },
+                    "recomputedHash": {
+                        "type": "string"
+                    },
+                    "totalMismatches": {
+                        "type": "integer",
+                        "format": "int64"
                     }
                 }
             },

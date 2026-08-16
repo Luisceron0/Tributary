@@ -14,6 +14,10 @@ import com.tributary.application.usecase.RegisterInvoiceResult;
 import com.tributary.application.usecase.RegisterInvoiceUseCase;
 import com.tributary.domain.DocumentState;
 import com.tributary.domain.Invoice;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -51,6 +55,20 @@ public class InvoiceController {
     this.getInvoiceUseCase = getInvoiceUseCase;
   }
 
+  // T-801: the real status codes and success schema, declared explicitly. These endpoints return
+  // ResponseEntity<?> on purpose — a single endpoint answers with different bodies per outcome —
+  // and springdoc cannot infer anything from a wildcard, so without these annotations the
+  // generated contract documented a bare untyped `200 OK` for every route: paths and request
+  // bodies correct, responses fiction. Found by generating a typed client from the contract and
+  // watching it fail to compile (see lessons.md L-030).
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "201",
+        description = "Registered in DRAFT. Idempotent: re-registering the same businessKey returns the existing draft.",
+        content = @Content(schema = @Schema(implementation = InvoiceResponseDto.class))),
+    @ApiResponse(responseCode = "409", description = "Already registered in a different state", content = @Content()),
+    @ApiResponse(responseCode = "422", description = "EN 16931 validation violations", content = @Content())
+  })
   @PostMapping
   public ResponseEntity<?> register(@Valid @RequestBody InvoiceRequestDto request) {
     var useCaseRequest = InvoiceMapper.toRegisterRequest(request);
@@ -72,6 +90,12 @@ public class InvoiceController {
     };
   }
 
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        content = @Content(schema = @Schema(implementation = InvoiceResponseDto.class))),
+    @ApiResponse(responseCode = "404", description = "No invoice with that businessKey", content = @Content())
+  })
   @GetMapping("/{businessKey}")
   public ResponseEntity<?> get(@PathVariable String businessKey) {
     return getInvoiceUseCase
@@ -80,6 +104,18 @@ public class InvoiceController {
         .orElseGet(() -> ResponseEntity.notFound().build());
   }
 
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "202",
+        description = "Issued; body carries the regime-resolved state",
+        content = @Content(schema = @Schema(implementation = InvoiceResponseDto.class))),
+    @ApiResponse(
+        responseCode = "424",
+        description = "Regime unreachable — document left in NEEDS_RECONCILIATION, never retried blindly (ADR-003)",
+        content = @Content(schema = @Schema(implementation = InvoiceResponseDto.class))),
+    @ApiResponse(responseCode = "404", content = @Content()),
+    @ApiResponse(responseCode = "409", description = "Invalid state for issuance", content = @Content())
+  })
   @PostMapping("/{businessKey}/issuances")
   public ResponseEntity<?> issue(@PathVariable String businessKey) {
     IssueInvoiceResult result = issueInvoiceUseCase.execute(businessKey);
@@ -103,6 +139,11 @@ public class InvoiceController {
     };
   }
 
+  @ApiResponses({
+    @ApiResponse(responseCode = "201", description = "Correcting document created (RF-004: never an edit)", content = @Content()),
+    @ApiResponse(responseCode = "404", content = @Content()),
+    @ApiResponse(responseCode = "409", description = "Invalid state, or the regime refused the correction", content = @Content())
+  })
   @PostMapping("/{businessKey}/corrections")
   public ResponseEntity<?> correct(
       @PathVariable String businessKey, @Valid @RequestBody CorrectionRequestDto request, @AuthenticationPrincipal Jwt jwt) {
@@ -123,6 +164,14 @@ public class InvoiceController {
     };
   }
 
+  @ApiResponses({
+    @ApiResponse(
+        responseCode = "200",
+        description = "EN 16931 / XRechnung CII document",
+        content = @Content(mediaType = MediaType.APPLICATION_XML_VALUE, schema = @Schema(type = "string"))),
+    @ApiResponse(responseCode = "404", content = @Content()),
+    @ApiResponse(responseCode = "422", description = "Mapping constraint violated — never a silently invalid document", content = @Content())
+  })
   @GetMapping(value = "/{businessKey}/renderings/xrechnung", produces = MediaType.APPLICATION_XML_VALUE)
   public ResponseEntity<?> renderXRechnung(@PathVariable String businessKey) {
     var found = getInvoiceUseCase.execute(businessKey);

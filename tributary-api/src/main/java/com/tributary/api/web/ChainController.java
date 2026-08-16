@@ -1,8 +1,8 @@
 package com.tributary.api.web;
 
 import com.tributary.adapter.es.VerifactuHasher;
+import com.tributary.api.dto.ChainVerificationView;
 import com.tributary.persistence.ChainVerifier;
-import java.util.Map;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +32,21 @@ public class ChainController {
         new ChainVerifier(dataSource, (previousHash, canonicalPayload) -> VerifactuHasher.hash(canonicalPayload, previousHash));
   }
 
+  // T-801: the body is a Map by design (two different shapes for INTACT vs BROKEN), so the schema
+  // is declared here rather than inferred. See lessons.md L-030.
+  @io.swagger.v3.oas.annotations.responses.ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "200",
+        description =
+            "INTACT with recordsVerified, or BROKEN with brokenRecordId, storedHash, recomputedHash, totalMismatches and recordsVerified",
+        content =
+            @io.swagger.v3.oas.annotations.media.Content(
+                schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = ChainVerificationView.class))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "404",
+        description = "Unknown chain, or a chain with zero records — indistinguishable, so answered honestly as not found",
+        content = @io.swagger.v3.oas.annotations.media.Content())
+  })
   @GetMapping("/{chainId}/verification")
   public ResponseEntity<?> verify(@PathVariable UUID chainId) {
     ChainVerifier.VerificationResult result = chainVerifier.verify(chainId);
@@ -42,16 +57,15 @@ public class ChainController {
       case ChainVerifier.VerificationResult.Intact intact when intact.recordsVerified() == 0 ->
           ResponseEntity.notFound().build();
       case ChainVerifier.VerificationResult.Intact intact ->
-          ResponseEntity.ok(Map.of("status", "INTACT", "recordsVerified", intact.recordsVerified()));
+          ResponseEntity.ok(ChainVerificationView.intact(intact.recordsVerified()));
       case ChainVerifier.VerificationResult.Broken broken ->
           ResponseEntity.ok(
-              Map.of(
-                  "status", "BROKEN",
-                  "brokenRecordId", broken.brokenRecordId(),
-                  "storedHash", broken.storedHash(),
-                  "recomputedHash", broken.recomputedHash(),
-                  "totalMismatches", broken.totalMismatches(),
-                  "recordsVerified", broken.recordsVerified()));
+              ChainVerificationView.broken(
+                  broken.brokenRecordId(),
+                  broken.storedHash(),
+                  broken.recomputedHash(),
+                  broken.totalMismatches(),
+                  broken.recordsVerified()));
     };
   }
 }

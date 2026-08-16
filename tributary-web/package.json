@@ -1,0 +1,29 @@
+{
+  "name": "tributary-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "generate:api": "openapi-typescript ../docs/openapi.json -o src/api/schema.d.ts",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "//": "SRS 5.3: versions are pinned exactly, never ranges — the same rule the Maven side follows. typescript is held at 5.9.3 rather than the 6.x the Vite template scaffolds with, because openapi-typescript (the generator that makes the OpenAPI contract load-bearing, T-801) declares peer typescript@^5.x; resolved with a real version choice, never with --legacy-peer-deps.",
+  "dependencies": {
+    "openapi-fetch": "0.17.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "openapi-typescript": "7.13.0",
+    "oxlint": "1.78.0",
+    "typescript": "5.9.3",
+    "vite": "8.2.1"
+  }
+}

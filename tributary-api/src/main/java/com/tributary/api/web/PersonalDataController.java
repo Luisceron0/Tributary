@@ -27,6 +27,23 @@ public class PersonalDataController {
     this.useCase = useCase;
   }
 
+  // T-801: SRS §6.5 lists 200/403/409 for this route. 403 is enforced by SecurityConfig (CV-08:
+  // only ADMIN reaches this method at all) rather than produced here, so it never appeared in the
+  // generated contract — declared explicitly, since a contract that omits the separation-of-duties
+  // boundary omits the most important thing about this endpoint.
+  @io.swagger.v3.oas.annotations.responses.ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "200",
+        description = "Idempotent: SUPPRESSED, or ALREADY_SUPPRESSED if the key was already destroyed (RF-007)"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "403",
+        description = "Any role other than ADMIN — issuance and evidence destruction never share an identity (CV-08)",
+        content = @io.swagger.v3.oas.annotations.media.Content()),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "409",
+        description = "An active fiscal retention obligation still covers this subject",
+        content = @io.swagger.v3.oas.annotations.media.Content())
+  })
   @DeleteMapping("/{subjectId}/personal-data")
   public ResponseEntity<?> suppress(
       @PathVariable UUID subjectId,
