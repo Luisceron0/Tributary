@@ -107,6 +107,35 @@ class ApplicationRoleGrantsTest extends AbstractPostgresTest {
             jdbc.sql("UPDATE fiscal_record SET canonical_payload = '{}' WHERE id = ?").param(recordId).update()));
   }
 
+  @Test
+  @DisplayName("T-600: tributary_app CAN DELETE subject_key — the one table where deletion IS the feature (RF-007 crypto-shredding)")
+  void applicationRoleCanDeleteSubjectKey() {
+    UUID subjectId = TestFixtures.insertBuyer(dataSource);
+    jdbc.sql("INSERT INTO subject_key (subject_id, key_material) VALUES (?, ?)")
+        .params(subjectId, new byte[32])
+        .update();
+
+    assertDoesNotThrow(
+        () -> withRole("tributary_app", () ->
+            jdbc.sql("DELETE FROM subject_key WHERE subject_id = ?").param(subjectId).update()));
+  }
+
+  @Test
+  @DisplayName("T-600: tributary_app cannot UPDATE subject_key — a key is created once and destroyed, never modified in place")
+  void applicationRoleCannotUpdateSubjectKey() {
+    UUID subjectId = TestFixtures.insertBuyer(dataSource);
+    jdbc.sql("INSERT INTO subject_key (subject_id, key_material) VALUES (?, ?)")
+        .params(subjectId, new byte[32])
+        .update();
+
+    assertThrows(
+        BadSqlGrammarException.class,
+        () -> withRole("tributary_app", () ->
+            jdbc.sql("UPDATE subject_key SET key_material = ? WHERE subject_id = ?")
+                .params(new byte[32], subjectId)
+                .update()));
+  }
+
   private void withRole(String role, Runnable action) {
     jdbc.sql("SET ROLE " + role).update();
     try {

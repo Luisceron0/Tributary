@@ -347,7 +347,14 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ## Fase 6 — Privacidad y auditoría (día 6)
 
-- [ ] **T-600** `KeyVaultPort` con clave por titular
+**Nota de alcance (2026-08-16):** T-604, T-605 y la mitad "contra la instancia real" de T-606/CV-09 dependen de que `tributary-api` tenga rutas HTTP y Spring Security reales — eso es la fase 7 (§6.2: "tributary-api | Spring Boot 3 | REST, OAuth2, RBAC..."). Construir JWT/RBAC contra una librería elegida a mano ahora arriesgaría ser trabajo desechable en cuanto la configuración real de `JwtDecoder`/Spring Security de la fase 7 reemplace lo que sea que se construyera aquí — no es el mismo tipo de "pieza aislada reutilizable" que T-500-502 fueron para XML. T-600/601/602/603 sí son alcanzables ahora: viven en `tributary-application`/`tributary-persistence`, sin ninguna dependencia de HTTP.
+
+- [x] **T-600** `KeyVaultPort` con clave por titular
+  - `KeyVaultPort` (aplicación): `getOrCreateKey`/`destroyKey`/`hasKey`, superficie deliberadamente mínima — sin rotación, sin listado, sin exportar la clave en claro más de lo estrictamente necesario
+  - `JdbcKeyVaultRepository` + tabla `subject_key` (V6, `subject_id → buyer.id`, `key_material BYTEA`) — la única tabla del esquema **sin** el trigger de solo-append de T-202: `DELETE` sobre esta tabla **es** la operación de supresión (RF-007), no un efecto colateral a bloquear
+  - Clave real de 256 bits vía `SecureRandom`, nunca `Random`. `GRANT SELECT, INSERT, DELETE` a `tributary_app` — **sin `UPDATE`**, a propósito: una clave se crea una vez y se destruye, nunca se modifica en el sitio, así que no hay nada que sobrescribir por accidente
+  - `mvn test -pl tributary-persistence -Dtest=JdbcKeyVaultRepositoryTest,ApplicationRoleGrantsTest` → `Tests run: 14, Failures: 0` (6 nuevos + 8 de grants, 2 nuevos para `subject_key`)
+  - **Dos pruebas de falsabilidad** (la primera no discriminó nada, dejada fuera del resultado final por la misma razón que L-021): quitar la comprobación de "ya existe" en `getOrCreateKey` no rompió nada porque `ON CONFLICT DO NOTHING` + un `SELECT` posterior ya cubrían el mismo caso de forma redundante — mismo patrón de T-504. La sonda que sí importó: deshabilitar el `DELETE` real en `destroyKey` → `hasKeyReflectsRealState` y `destroyThenRecreateNeverRevivesTheOldKey` lo detectaron de inmediato. Para el grant: se amplió a mano a `UPDATE` en la migración → `applicationRoleCannotUpdateSubjectKey` lo detectó (mismo criterio que L-015: ampliar, no quitar una negación redundante). Las tres revertidas, verde de nuevo (mvn test completo del repo → `BUILD SUCCESS`)
 - [ ] **T-601** Cifrado AES-256-GCM con IV aleatorio por operación sobre nombre, dirección, correo y teléfono
   - Nota: identificador fiscal y país quedan en claro — son necesarios para la validez del documento
 - [ ] **T-602** Crypto-shredding RF-007
