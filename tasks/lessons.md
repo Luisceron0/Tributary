@@ -379,3 +379,17 @@ Aplica directamente a lo que viene: la huella SHA-256 de T-400/T-401 tiene el mi
 **Regla derivada:** el resultado de una herramienta de fuzzing/pentest contra un objetivo propio nunca se acepta solo por su resumen autorreportado — se cruza contra una fuente de verdad del lado del servidor (aquí, el log de acceso estructurado real) para la misma ventana temporal antes de sacar cualquier conclusión, tanto si el resultado es "vulnerable" como si es "no vulnerable". La propia conclusión final de "no inyectable" de esta tarea se sostiene en la evidencia del servidor, no en el resumen del cliente.
 
 **Cómo sabríamos que la regla falló:** una conclusión de seguridad citada en `todo.md` que solo referencia la salida de una herramienta externa, sin una línea de log o consulta del lado servidor que la corrobore de forma independiente.
+
+---
+
+## L-027 · Semgrep ignora por defecto cualquier ruta que contenga el segmento "tests" — sin avisar, solo "Nothing to scan"
+
+**Fecha:** 2026-08-16 · **Origen:** T-703, reglas Semgrep propias
+
+**Qué pasó:** los fixtures deliberadamente vulnerables para probar las reglas propias se guardaron primero en `.semgrep/tests/`. `semgrep --config .semgrep/tributary-rules.yml .semgrep/tests/` reportó `Scanning 0 files ... Nothing to scan` — ni un error ni una advertencia obvia, solo un resumen que decía "0 hallazgos" exactamente igual que si las reglas hubieran validado correctamente un código limpio. La causa: el `.semgrepignore` incorporado de Semgrep excluye por defecto cualquier ruta con el segmento `tests` (pensado para no escanear la propia suite de tests de una aplicación en busca de vulnerabilidades de producción) — visible solo con `--verbose` (`Scan skipped: Files matching .semgrepignore patterns: 3`).
+
+**Por qué importa:** un directorio de fixtures ignorado silenciosamente produce el mismo resultado superficial ("0 findings") que reglas correctamente validadas — el escenario exacto que la disciplina de "la regla debe fallar en rojo antes de confiar en ella" existe para prevenir. Sin mirar el resumen con atención (o sin `--verbose`), es fácil confundir "no se escaneó nada" con "se escaneó y no hay nada".
+
+**Regla derivada:** los fixtures de prueba para reglas propias de Semgrep viven en un directorio que no coincida con los patrones por defecto de `.semgrepignore` — `.semgrep/fixtures/`, no `.semgrep/tests/`. Y, en general: cuando una herramienta de análisis estático reporta "0 hallazgos", confirmar primero cuántos archivos escaneó realmente (`Targets scanned`), no solo el conteo de hallazgos — un `0` de `0 archivos` y un `0` de `91 archivos` se ven idénticos en el resumen corto.
+
+**Cómo sabríamos que la regla falló:** `scripts/run-semgrep.sh` verifica explícitamente que las fixtures produzcan el número exacto de hallazgos esperado (4) antes de confiar en el resultado del escaneo real — si ese conteo cae a 0, el script falla con un mensaje explícito en vez de continuar en silencio.

@@ -1,0 +1,45 @@
+rules:
+  - id: tributary-no-raw-sql-statement
+    languages: [java]
+    severity: ERROR
+    message: >
+      Raw java.sql.Statement bypasses parameterized queries. Every SQL statement in this
+      codebase is built with JdbcClient's `?` placeholders and `.param(...)` (see
+      JdbcInvoiceRepository, FiscalRecordRepository, JdbcAuditEventRepository,
+      JdbcKeyVaultRepository) — never string-concatenated (T-702/CV-01). If you need to run a
+      query here, use JdbcClient or a PreparedStatement, not Connection.createStatement().
+    patterns:
+      - pattern: $CONN.createStatement()
+
+  - id: tributary-secure-xml-factory-only
+    languages: [java]
+    severity: ERROR
+    message: >
+      Raw XML parser factory instantiation bypasses SecureXmlFactory's XXE/DTD hardening
+      (T-500 — the highest-severity input surface per project convention, see
+      .github/copilot-instructions.md). Use
+      com.tributary.adapter.de.SecureXmlFactory instead of instantiating a
+      DocumentBuilderFactory/SAXParserFactory/XMLInputFactory/TransformerFactory directly.
+    patterns:
+      - pattern-either:
+          - pattern: DocumentBuilderFactory.newInstance()
+          - pattern: SAXParserFactory.newInstance()
+          - pattern: XMLInputFactory.newInstance()
+          - pattern: TransformerFactory.newInstance()
+    paths:
+      exclude:
+        - "**/SecureXmlFactory.java"
+
+  - id: tributary-no-aeat-hostname
+    languages: [java]
+    severity: ERROR
+    message: >
+      An AEAT hostname literal outside VerifactuQrGenerator's own denylist. ADR-005: this
+      system never remits to the tax authority. ADR-007/CV-12/L-001: the ES-regime QR must
+      never point at an AEAT host. If this is a legitimate addition to the denylist itself,
+      widen the paths.exclude list for this rule in the same commit, with a one-line reason.
+    pattern-regex: '(agenciatributaria\.(es|gob\.es)|aeat\.es)'
+    paths:
+      exclude:
+        - "**/VerifactuQrGenerator.java"
+        - "**/VerifactuQrGeneratorTest.java"
