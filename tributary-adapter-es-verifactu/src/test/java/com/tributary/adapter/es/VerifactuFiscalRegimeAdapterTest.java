@@ -191,6 +191,24 @@ class VerifactuFiscalRegimeAdapterTest {
   }
 
   @Test
+  @DisplayName("RF-004's own alternative flow: cancelling an already-cancelled invoice is refused, not a duplicate ANULACIÓN")
+  void cancellingAnAlreadyCancelledInvoiceIsRefused() {
+    FakeFiscalRecordPort fiscalRecordPort = new FakeFiscalRecordPort();
+    FakeInvoiceRepository invoiceRepository = new FakeInvoiceRepository();
+    Invoice invoice = sampleInvoice("biz-key-1", DocumentState.SUBMITTING);
+    invoiceRepository.registerBusinessKey(invoice.businessKey());
+    VerifactuFiscalRegimeAdapter adapter =
+        new VerifactuFiscalRegimeAdapter(fiscalRecordPort, invoiceRepository, FIXED_CLOCK);
+    adapter.issue(invoice);
+    adapter.cancel(invoice, "first cancellation");
+
+    CancellationResult secondAttempt = adapter.cancel(invoice, "second cancellation attempt");
+
+    assertFalse(secondAttempt.accepted());
+    assertEquals(2, fiscalRecordPort.appendCalls.size(), "no third record should ever be appended");
+  }
+
+  @Test
   @DisplayName("query(): FOUND_VALIDATED when the businessKey resolves to a real record, NOT_FOUND otherwise")
   void queryReflectsWhetherARecordExists() {
     FakeFiscalRecordPort fiscalRecordPort = new FakeFiscalRecordPort();

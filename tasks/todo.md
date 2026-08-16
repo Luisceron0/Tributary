@@ -397,6 +397,12 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - `mvn test -pl tributary-adapter-es-verifactu -Dtest=VerifactuFiscalRegimeAdapterTest` → `Tests run: 5, Failures: 0`, con un doble hecho a mano de `FiscalRecordPort` (este módulo depende solo de `tributary-application`, nunca de `tributary-persistence` — mismo patrón que las pruebas de contrato de Factus usan WireMock en vez de un servidor real)
   - **Prueba de falsabilidad:** se cambió `chainIdFor` para devolver `UUID.randomUUID()` en vez de la derivación determinística. `chainIdIsDeterministicPerIssuer` lo detectó de inmediato. Revertido, `mvn test` completo del repo → `BUILD SUCCESS`
 
+- **`VerifactuFiscalRegimeAdapter.cancel()` ganó la detección de "ya anulado"** (el 409 del flujo alternativo de RF-004): comprueba si ya existe un registro `ANULACION` para la factura antes de crear uno nuevo — la única capa que sabe cómo ES representa "ya corregido" (un registro existente), así que el caso de uso que la usa se queda agnóstico de régimen
+- **`CorrectInvoiceUseCase` (RF-004):** verifica la precondición (`ISSUED`/`ISSUED_WITH_WARNINGS`), delega en `FiscalRegimePort.cancel()`, nunca edita `invoice.state` en éxito ("el original conserva su estado", literal de RF-004), registra ambos desenlaces (éxito y rechazo) en la bitácora. `mvn test -pl tributary-application -Dtest=CorrectInvoiceUseCaseTest` → `Tests run: 5, Failures: 0`
+  - **Prueba de falsabilidad:** se deshabilitó la comprobación `!result.accepted()`. `regimeRefusalSurfacesAsRegimeRefused` lo detectó. Revertido
+- **`GetInvoiceUseCase`:** envoltorio mínimo sobre `InvoiceRepository.findByBusinessKey` — `{id}` en la tabla de endpoints de la SRS es el `businessKey`, el mismo identificador que ya usa cada caso de uso existente (`IssueInvoiceUseCase.execute(String businessKey)`, etc.), no un UUID de persistencia
+- `mvn test` completo del repo → `BUILD SUCCESS`
+
 - [ ] **T-700** Cabeceras de respuesta y CORS con allowlist explícita
 - [ ] **T-701** Logging estructurado JSON con redacción de PII y secretos
   - Verificación: ningún log contiene identificadores fiscales, tokens ni payloads completos

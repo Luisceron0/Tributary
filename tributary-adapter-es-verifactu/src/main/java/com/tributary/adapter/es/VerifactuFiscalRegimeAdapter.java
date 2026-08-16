@@ -77,6 +77,13 @@ public final class VerifactuFiscalRegimeAdapter implements FiscalRegimePort {
     Objects.requireNonNull(correctionReason, "correctionReason must not be null");
     UUID invoiceId = requireInvoiceId(original.businessKey());
 
+    // RF-004's own alternative flow ("intento de anular un documento ya anulado -> 409"): only
+    // this adapter knows how ES represents "already cancelled" (an existing ANULACION record) —
+    // CorrectInvoiceUseCase stays regime-agnostic and just trusts this result.
+    if (fiscalRecordPort.findLatestByInvoiceIdAndRecordType(invoiceId, RECORD_TYPE_ANULACION).isPresent()) {
+      return new CancellationResult(false, Optional.empty(), "businessKey=" + original.businessKey() + " was already cancelled");
+    }
+
     FiscalRecordPort.RecordSummary altaRecord =
         fiscalRecordPort
             .findLatestByInvoiceIdAndRecordType(invoiceId, RECORD_TYPE_ISSUANCE)
