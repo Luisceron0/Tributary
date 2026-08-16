@@ -393,3 +393,17 @@ Aplica directamente a lo que viene: la huella SHA-256 de T-400/T-401 tiene el mi
 **Regla derivada:** los fixtures de prueba para reglas propias de Semgrep viven en un directorio que no coincida con los patrones por defecto de `.semgrepignore` — `.semgrep/fixtures/`, no `.semgrep/tests/`. Y, en general: cuando una herramienta de análisis estático reporta "0 hallazgos", confirmar primero cuántos archivos escaneó realmente (`Targets scanned`), no solo el conteo de hallazgos — un `0` de `0 archivos` y un `0` de `91 archivos` se ven idénticos en el resumen corto.
 
 **Cómo sabríamos que la regla falló:** `scripts/run-semgrep.sh` verifica explícitamente que las fixtures produzcan el número exacto de hallazgos esperado (4) antes de confiar en el resultado del escaneo real — si ese conteo cae a 0, el script falla con un mensaje explícito en vez de continuar en silencio.
+
+---
+
+## L-028 · "Versión fijada" no significa "versión seguraindefinidamente" — el pin necesita revisión activa, no solo existir
+
+**Fecha:** 2026-08-16 · **Origen:** T-704, construyendo el paso de SCA del pipeline de CI
+
+**Qué pasó:** al conectar `trivy` (SCA) contra el árbol de dependencias real del proyecto — todas las versiones ya fijadas explícitamente, tal como pide SRS 5.3 — apareció una lista real de CVE **HIGH/CRITICAL vigentes**: `tomcat-embed-core:10.1.42` con tres CRITICAL (RCE/bypass), `spring-security-web:6.5.1` con un CRITICAL (bypass de política de seguridad), más HIGH en `spring-security-core`, `spring-core`, `spring-webmvc`, `spring-expression`, `jackson-databind`, `jackson-core` y `org.postgresql:postgresql`. Ninguna de estas versiones era vieja por descuido — todas habían sido fijadas deliberadamente en fases anteriores del proyecto, algunas hace apenas unos días de trabajo — pero el ecosistema siguió publicando CVEs contra ellas después de fijarlas.
+
+**Por qué importa:** la disciplina de SRS 5.3 ("versiones fijadas, nunca rangos") existe para build reproducibles, no para congelar el proyecto contra vulnerabilidades nuevas — confundir ambas cosas deja un pin envejecer en silencio hasta convertirse exactamente en el tipo de hallazgo que el Definition of Done promete bloquear ("sin hallazgos de dependencias high/critical"). Sin un SCA corriendo de verdad (no solo mencionado en la SRS como tarea futura), esos CVEs habrían permanecido invisibles hasta T-708 o más tarde.
+
+**Regla derivada:** un pin de versión se corrige subiendo a otra versión igualmente fijada y exacta (nunca a un rango) tan pronto un escáner de SCA real lo señala — no se pospone como "hallazgo conocido" cuando la corrección es directa (aquí: `spring-boot.version` 3.5.3→3.5.16 en `tributary-api`, que arrastra tomcat/spring-security/spring-framework a versiones corregidas transitivamente; `spring-jdbc.version`/`postgresql.version`/un pin explícito de `jackson-databind` en `tributary-persistence`, que no importa el BOM de Spring Boot y por eso no se benefició del primer cambio — ver L-023 sobre por qué ese módulo tiene sus propios pines independientes). Cada subida se verificó con `mvn dependency:tree` (la versión resuelta real, no la que se *cree* que quedó) y con la suite completa en verde antes de confiar en ella. El SCA corre en cada push/PR (T-704), no una sola vez al fijar las versiones.
+
+**Cómo sabríamos que la regla falló:** `trivy fs --severity HIGH,CRITICAL --exit-code 1` en CI pasa a rojo — que es exactamente la señal que se diseñó para disparar, y por lo que el job de `sca` es bloqueante y no informativo.
