@@ -33,4 +33,26 @@
     because an import rule alone cannot see a field called `cufe` (lesson L-002).
   -->
 
+  <build>
+    <plugins>
+      <!--
+        Toolchain Q / SRS 9: mutation score is the anchor metric here, not line coverage —
+        fiscal arithmetic and the state machine are exactly where a surviving mutant means a
+        missing assertion, not a missing line. `mvn org.pitest:pitest-maven:mutationCoverage`.
+      -->
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <configuration>
+          <targetClasses>
+            <param>com.tributary.domain.*</param>
+          </targetClasses>
+          <targetTests>
+            <param>com.tributary.domain.*</param>
+          </targetTests>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
 </project>

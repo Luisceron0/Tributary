@@ -70,6 +70,54 @@
         <artifactId>database-commons</artifactId>
         <version>${testcontainers.version}</version>
       </dependency>
+      <!--
+        Same conflict shape as the Testcontainers pin above, found while wiring cucumber-jvm
+        (toolchain Q): spring-boot-dependencies manages its own older junit-jupiter/junit-platform
+        (5.12.2 / 1.12.2) that silently won over the root pom's junit-bom import (5.14.4 /
+        1.14.4) on this module's own resolved classpath specifically — every other module, which
+        doesn't import the Spring Boot BOM, resolved 5.14.4 correctly. cucumber-junit-platform-engine
+        needs junit-platform-engine >= 1.13 (org.junit.platform.engine.support.discovery.
+        DiscoveryIssueReporter) — the older, silently-won version broke `mvn test` here with
+        NoClassDefFoundError during Cucumber's own test discovery, even in a module with no
+        feature files of its own. Re-importing junit-bom here did NOT resolve the conflict (BOM
+        vs BOM precedence across parent/child is fragile) — explicit individual pins, the same
+        pattern already used for Testcontainers above, are what actually wins.
+      -->
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <version>${junit.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.junit.platform</groupId>
+        <artifactId>junit-platform-engine</artifactId>
+        <version>1.14.4</version>
+      </dependency>
+      <dependency>
+        <groupId>org.junit.platform</groupId>
+        <artifactId>junit-platform-commons</artifactId>
+        <version>1.14.4</version>
+      </dependency>
+      <dependency>
+        <groupId>org.junit.platform</groupId>
+        <artifactId>junit-platform-launcher</artifactId>
+        <version>1.14.4</version>
+      </dependency>
+      <dependency>
+        <groupId>org.junit.platform</groupId>
+        <artifactId>junit-platform-suite-engine</artifactId>
+        <version>1.14.4</version>
+      </dependency>
+      <dependency>
+        <groupId>org.junit.platform</groupId>
+        <artifactId>junit-platform-suite-commons</artifactId>
+        <version>1.14.4</version>
+      </dependency>
+      <dependency>
+        <groupId>org.junit.platform</groupId>
+        <artifactId>junit-platform-suite-api</artifactId>
+        <version>1.14.4</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 

@@ -120,4 +120,28 @@
     </dependency>
   </dependencies>
 
+  <build>
+    <plugins>
+      <!--
+        Toolchain Q / SRS 9: mutates the Java-side logic that computes/verifies chain
+        integrity (ChainVerifier, PiiCipher, the repositories) — the actual immutability and
+        chaining GUARANTEE lives in the PL/pgSQL triggers (ADR-002), which are not JVM
+        bytecode and can't be mutated by PIT; those are verified separately, against real
+        PostgreSQL via Testcontainers (CV-02/CV-03), not by this tool.
+      -->
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <configuration>
+          <targetClasses>
+            <param>com.tributary.persistence.*</param>
+          </targetClasses>
+          <targetTests>
+            <param>com.tributary.persistence.*</param>
+          </targetTests>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
 </project>
