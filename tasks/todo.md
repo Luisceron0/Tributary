@@ -517,6 +517,46 @@ T-400/401/402/403 completas desde el 2026-08-15 (evidencia original: `124/124` v
 
 ---
 
+## Fase 8 — Frontend web (ADR-010) · **EN CURSO (2026-08-16)**
+
+Decisión explícita de Luis tras exponerle que la recomendación técnica era la contraria (R-05 sube).
+Modo demo sin login, stack elegido por criterio propio: React + TypeScript + Vite en `tributary-web`,
+origen separado, cliente TS **generado** desde `docs/openapi.json`.
+
+- [x] **T-800** ADR-010 + revisión versionada del SRS a v1.3
+  - Verificación: el ADR declara qué parte de ADR-006 cae y cuál sobrevive; §6.3 y §12 del SRS coherentes con los archivos de `docs/adr/`; B-02 explícitamente no tocado
+  - `docs/adr/ADR-010-web-frontend-demo-mode.md`, estado de ADR-006 actualizado en ambos lugares (archivo e índice), SRS §6.3 con ADR-010 y §12 con la entrada de v1.3 que registra que la decisión fue posterior a la advertencia sobre R-05
+- [ ] **T-801** Cliente TypeScript generado desde `docs/openapi.json`
+  - Verificación **binaria y discriminante**: cambiar un campo del contrato debe romper el build del frontend. Si no rompe, el generador no está en la ruta crítica y el control es declarado, no verificado
+- [ ] **T-802** Módulo `tributary-web`: scaffold Vite, build integrado al reactor, lockfile fijado (SRS 5.3)
+- [ ] **T-803** Vistas por rol — OPERATOR registra/emite/corrige · AUDITOR lee y verifica cadena · ADMIN supresión
+  - Selector de rol declarado como demo en la propia interfaz, nunca presentado como login
+- [ ] **T-804** Página pública de verificación — destino real del QR de ADR-007, sin token (ADR-009)
+  - Cierra el hueco funcional: hoy una persona que escanea el QR recibe JSON crudo
+- [ ] **T-805** SCA del ecosistema npm en CI, mismo umbral bloqueante que Maven (HIGH/CRITICAL)
+  - Hoy `trivy` solo cubre `pom.xml`; el frontend introduce una cadena de suministro que ningún control actual ve
+- [ ] **T-806** E2E contra la pila real levantada, no contra mocks
+
+---
+
+## Fase 9 — Milestone 2 · gate SRS §10.5
+
+**Ninguna casilla de §10.5 puede quedar sin marcar antes de exponer.** El propio SRS: *"un despliegue
+público con el threat model de un entorno local es exactamente el fallo que este documento existe
+para evitar."*
+
+- [ ] **T-900** Rate limiter entrante por IP y por cliente, con `429`
+  - Cierra el gap ya declarado en §6.5 (la fila de `issuances` lista `429 limitador propio` y hoy no es alcanzable)
+- [ ] **T-901** TLS terminado en proxy de confianza, HSTS ≥ 1 año; `X-Forwarded-For` aceptado solo desde la IP del proxy y descartado del cliente
+- [ ] **T-902** §7B reevaluado: etapas Reconnaissance y Delivery bajo exposición pública, niveles actualizados en el documento
+- [ ] **T-903** Credenciales de sandbox de Factus rotadas antes de exponer (A-002 cambia de categoría)
+- [ ] **T-904** Revisión de que ningún dato de ejemplo contiene PII real
+  - Precondición del despliegue demo de ADR-010: los tokens son públicos por diseño, así que los datos deben ser sintéticos y la base desechable con reset programado
+- [ ] **T-905** §9B íntegro contra la instancia **pública**, no la local
+- [ ] **T-906** Infraestructura de despliegue y reset programado de la base demo
+
+---
+
 ## Orden de recorte acordado
 
 Si el presupuesto de siete días se agota, se recorta en este orden y no en otro:

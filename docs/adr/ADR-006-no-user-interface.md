@@ -1,6 +1,9 @@
 # ADR-006: No user interface
 
-**Status:** Accepted
+**Status:** Superseded **in part** by [ADR-010](ADR-010-web-frontend-demo-mode.md) — the "no
+interface" decision no longer holds; the consequences below about the empty CORS allowlist and
+the absence of a login endpoint both still do. See ADR-010 for which reasoning expired and which
+survived.
 
 ## Context
 

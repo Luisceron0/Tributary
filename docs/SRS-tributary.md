@@ -1,6 +1,6 @@
 # SRS — Tributary
 
-**Versión:** 1.2
+**Versión:** 1.3
 **Fecha:** 2026-08-14
 **Autor:** Luis Alejandro Cerón Muñoz | **Revisor técnico:** Arch-Sentinel
 **Estado:** **Aprobado** — sin `[PENDIENTE]` abiertos
@@ -343,7 +343,7 @@ Comunicación: llamadas en proceso a través de interfaces de puerto. Un único 
 - **Alternativas descartadas:** simular la respuesta de la AEAT (fabrica evidencia); omitir el régimen ES (pierde la pieza más alineada con la tesis del proyecto).
 
 #### ADR-006: Sin interfaz de usuario
-- **Estado:** Aceptado
+- **Estado:** **Derogado en parte por ADR-010** (v1.3). La decisión de "sin interfaz" ya no rige; sí siguen rigiendo sus dos consecuencias: la allowlist de CORS vacía por defecto y la ausencia de endpoint de login.
 - **Contexto:** el objetivo es un lector backend/arquitectura.
 - **Decisión:** OpenAPI y una suite de tests que se lee como especificación ejecutable.
 - **Consecuencias:** el proyecto no genera capturas atractivas salvo las de evidencia de §9A. Se asume.
@@ -362,6 +362,13 @@ Comunicación: llamadas en proceso a través de interfaces de puerto. Un único 
 - **Decisión:** validador oficial KoSIT, versión fijada, checksum verificado, ejecutado en CI.
 - **Consecuencias:** dependencia externa pesada y un nuevo vector de cadena de suministro (T-012). A cambio, CV-05 pasa de "mi implementación se valida a sí misma" a evidencia contra la herramienta de referencia del ecosistema alemán — que es justo el lector al que apunta el proyecto.
 - **Alternativas descartadas:** XSD y Schematron embebidos (validar con reglas que uno mismo transcribió es una tautología, no una verificación).
+
+#### ADR-010: Frontend web, en modo de autenticación demo
+- **Estado:** Aceptado (v1.3). Deroga **en parte** a ADR-006. Texto completo: [`docs/adr/ADR-010-web-frontend-demo-mode.md`](adr/ADR-010-web-frontend-demo-mode.md).
+- **Contexto:** el argumento de presupuesto de ADR-006 caducó (Milestone 1 completo, fases 0–7 cerradas con evidencia); el objetivo de portafolio pasó a incluir capacidad full-stack. Además, el QR de ADR-007 está pensado para que lo escanee una persona y hoy responde JSON crudo.
+- **Decisión:** módulo `tributary-web` (React + TypeScript + Vite), servido como estáticos desde un origen distinto al de la API. **Sin login: modo demo con tokens pre-minteados** tras un selector de rol declarado como tal. El cliente TypeScript se **genera desde `docs/openapi.json`**, de modo que una deriva de contrato rompe el build del frontend — el contrato pasa de documentado a verificado.
+- **Consecuencias:** el riesgo R-05 sube y se gestiona editorialmente (el README sigue abriendo con la tesis y la evidencia CV-02/CV-03, nunca con la UI); la allowlist de CORS deja de ser teórica y pasa a ser un control ejercido; entra una segunda cadena de suministro (npm) que CI debe escanear con el mismo umbral bloqueante; y **los tokens demo son legibles por cualquiera que abra las DevTools** — inherente a la decisión, no un descuido, mitigado por la forma del despliegue (base desechable con reset, datos sintéticos sin PII, aviso explícito) y no por afirmar que "es solo una demo". CV-08 se sigue verificando donde es significativo: contra la API, en la suite de integración.
+- **Alternativas descartadas:** Keycloak como servidor de autorización real (la más fuerte en arquitectura, descartada por costo: duplica la huella de memoria y obliga a infraestructura autogestionada para un sistema que ADR-005 dice explícitamente que no va a producción); endpoint de login propio (contradice el diseño documentado y añade almacenamiento de credenciales, hashing y protección contra fuerza bruta); Thymeleaf server-rendered (mezcla la interfaz dentro del módulo de API y contradice el diseño stateless con CSRF deshabilitado).
 
 ### 6.4 Modelo de datos (entidades principales)
 
@@ -622,4 +629,5 @@ Si alguna casilla queda sin marcar, el sistema permanece en Milestone 1. Un desp
 |---------|-------|-------|---------|
 | 0.9 | 2026-08-14 | Luis Cerón / Arch-Sentinel | Borrador inicial. Cuatro `[PENDIENTE]` abiertos en §0. |
 | 1.0 | 2026-08-14 | Luis Cerón / Arch-Sentinel | **Aprobado.** P-01 a P-04 resueltos. Añadidos ADR-007 (QR no remitido), ADR-008 (validador KoSIT), T-012 (cadena de suministro del validador), CV-11 y CV-12, y §10.5 (gate de exposición pública). Corregido RF-003: el QR ya no apunta a la AEAT. R-01 reescrito: el riesgo dejó de ser la ausencia de credenciales y pasó a ser su filtración. |
+| 1.3 | 2026-08-16 | Luis Cerón, decisión explícita en sesión | **Entrada a Milestone 2 y frontend.** Añadido ADR-010 (frontend web en modo demo), que deroga **en parte** a ADR-006: cae la decisión de "sin interfaz", sobreviven la allowlist de CORS vacía por defecto y la ausencia de endpoint de login (el modo demo no establece sesión, así que la API sigue siendo un resource server puro y §6.5 no gana ningún endpoint). Estado de ADR-006 actualizado en §6.3 en consecuencia. Decisión tomada tras exponer que R-05 ("otro CRUD en Java") sube con esta elección y que la recomendación técnica era la contraria; se registra que la instrucción fue explícita y posterior a esa advertencia. **ADR-009 sigue sin incorporarse** al documento — B-02 continúa abierto y no se tocó en esta revisión. |
 | 1.2 | 2026-08-16 | Luis Cerón, instruido explícitamente en sesión | Incorpora disciplina de gobierno de tooling de terceros (gate O.5, registrado en `docs/decisiones.md`) y mutation testing como métrica ancla en los módulos críticos (§9: PIT/pitest, umbral ≥60 % en `tributary-domain` y `tributary-persistence`, junto a la cobertura de líneas ya existente como métrica secundaria). Añadida CV-13 (reglas de SAST propias validadas por caso positivo antes de confiar en el resultado sobre código real). Nota de honestidad: la instrucción de sesión que motivó este cambio afirmaba un "fallo de lectura de skill en una sesión anterior" como causa — esa afirmación específica no se verificó ni se encontró evidencia de ella durante la incorporación de este cambio, y no se repite aquí como hecho establecido; el contenido técnico añadido sí se verificó de forma independiente antes de escribirse (ver `docs/decisiones.md` y el registro de la sesión). No se tocó B-02 (§0) ni se incorporó ADR-009 en este cambio — sigue abierto, a cargo de Luis, sin relación con esta revisión. |
