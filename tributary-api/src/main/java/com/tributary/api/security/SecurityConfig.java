@@ -74,7 +74,15 @@ public class SecurityConfig {
   }
 
   @Bean
-  public SecurityFilterChain filterChain(HttpSecurity http, HostAllowlistFilter hostAllowlistFilter,
+  public com.tributary.api.web.RequestLoggingFilter requestLoggingFilter() {
+    return new com.tributary.api.web.RequestLoggingFilter();
+  }
+
+  @Bean
+  public SecurityFilterChain filterChain(
+      HttpSecurity http,
+      HostAllowlistFilter hostAllowlistFilter,
+      com.tributary.api.web.RequestLoggingFilter requestLoggingFilter,
       @Value("${tributary.security.cors-allowed-origins:}") String corsAllowedOrigins) throws Exception {
     http.csrf(csrf -> csrf.disable()) // stateless bearer-token API: no cookie/session to forge
         .cors(cors -> cors.configurationSource(corsConfigurationSource(corsAllowedOrigins)))
@@ -85,6 +93,10 @@ public class SecurityConfig {
                     .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
                     .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31_536_000)))
         .addFilterBefore(hostAllowlistFilter, org.springframework.security.web.context.SecurityContextHolderFilter.class)
+        // Runs first of all: every request gets one log line, including ones HostAllowlistFilter
+        // or authentication/authorization reject downstream — a wrapping filter (try/finally
+        // around the rest of the chain) still sees the final response status either way.
+        .addFilterBefore(requestLoggingFilter, HostAllowlistFilter.class)
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
             authorize ->
