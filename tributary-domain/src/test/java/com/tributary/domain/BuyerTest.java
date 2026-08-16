@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -33,7 +34,9 @@ class BuyerTest {
 
   @Test
   void rejectsNullOptionalRatherThanTreatingItAsAbsent() {
-    assertThrows(NullPointerException.class, () -> new Buyer("Handel GmbH", null, "DE"));
+    assertThrows(
+        NullPointerException.class,
+        () -> new Buyer("Handel GmbH", null, "DE", Optional.empty(), Optional.empty(), Optional.empty()));
   }
 
   @Test
@@ -41,5 +44,35 @@ class BuyerTest {
     assertAll(
         () -> assertThrows(IllegalArgumentException.class, () -> Buyer.withoutTaxIdentifier("  ", "DE")),
         () -> assertThrows(IllegalArgumentException.class, () -> Buyer.withoutTaxIdentifier("Handel", " ")));
+  }
+
+  @Test
+  void bothFactoriesLeavePersonalDataAbsentByDefault() {
+    Buyer withTaxId = Buyer.withTaxIdentifier("Handel GmbH", "DE123456789", "DE");
+    Buyer withoutTaxId = Buyer.withoutTaxIdentifier("Handel GmbH", "DE");
+    assertAll(
+        () -> assertFalse(withTaxId.address().isPresent()),
+        () -> assertFalse(withTaxId.email().isPresent()),
+        () -> assertFalse(withTaxId.phone().isPresent()),
+        () -> assertFalse(withoutTaxId.address().isPresent()),
+        () -> assertFalse(withoutTaxId.email().isPresent()),
+        () -> assertFalse(withoutTaxId.phone().isPresent()));
+  }
+
+  @Test
+  void withPersonalDataAttachesPiiWithoutDisturbingEverythingElse() {
+    Buyer base = Buyer.withTaxIdentifier("Handel GmbH", "DE123456789", "DE");
+
+    Buyer withPii =
+        base.withPersonalData(
+            Optional.of("Hauptstraße 1, 10115 Berlin"), Optional.of("buyer@handel.de"), Optional.of("+49 30 1234567"));
+
+    assertAll(
+        () -> assertEquals("Handel GmbH", withPii.name()),
+        () -> assertEquals("DE123456789", withPii.taxIdentifier().orElseThrow()),
+        () -> assertEquals("DE", withPii.countryCode()),
+        () -> assertEquals("Hauptstraße 1, 10115 Berlin", withPii.address().orElseThrow()),
+        () -> assertEquals("buyer@handel.de", withPii.email().orElseThrow()),
+        () -> assertEquals("+49 30 1234567", withPii.phone().orElseThrow()));
   }
 }

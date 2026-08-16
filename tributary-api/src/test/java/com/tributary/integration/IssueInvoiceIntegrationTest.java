@@ -21,6 +21,7 @@ import com.tributary.persistence.DataSourceFactory;
 import com.tributary.persistence.FlywayMigrator;
 import com.tributary.persistence.JdbcInvoiceRepository;
 import com.tributary.persistence.JdbcIssuanceAttemptRepository;
+import com.tributary.persistence.JdbcKeyVaultRepository;
 import java.time.LocalDate;
 import java.util.Currency;
 import java.util.List;
@@ -68,7 +69,7 @@ class IssueInvoiceIntegrationTest {
   @Test
   @DisplayName("T-304: SUBMITTING is visible from another connection before the network call — proven with a real second connection")
   void submittingIsVisibleFromAnotherConnectionBeforeNetworkIo() {
-    JdbcInvoiceRepository invoiceRepository = new JdbcInvoiceRepository(dataSource);
+    JdbcInvoiceRepository invoiceRepository = new JdbcInvoiceRepository(dataSource, new JdbcKeyVaultRepository(dataSource));
     JdbcIssuanceAttemptRepository attemptRepository = new JdbcIssuanceAttemptRepository(dataSource);
 
     InvoiceLine line =
@@ -119,7 +120,7 @@ class IssueInvoiceIntegrationTest {
   @Test
   @DisplayName("a document not in DRAFT is refused without any network call")
   void refusesANonDraftDocument() {
-    JdbcInvoiceRepository invoiceRepository = new JdbcInvoiceRepository(dataSource);
+    JdbcInvoiceRepository invoiceRepository = new JdbcInvoiceRepository(dataSource, new JdbcKeyVaultRepository(dataSource));
     JdbcIssuanceAttemptRepository attemptRepository = new JdbcIssuanceAttemptRepository(dataSource);
 
     InvoiceLine line =

@@ -1,6 +1,7 @@
 package com.tributary.persistence;
 
 import com.tributary.application.port.InvoiceRepository;
+import com.tributary.application.port.KeyVaultPort;
 import com.tributary.domain.Buyer;
 import com.tributary.domain.DocumentState;
 import com.tributary.domain.Invoice;
@@ -31,9 +32,11 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 public final class JdbcInvoiceRepository implements InvoiceRepository {
 
   private final JdbcClient jdbc;
+  private final KeyVaultPort keyVault;
 
-  public JdbcInvoiceRepository(DataSource dataSource) {
+  public JdbcInvoiceRepository(DataSource dataSource, KeyVaultPort keyVault) {
     this.jdbc = JdbcClient.create(Objects.requireNonNull(dataSource, "dataSource must not be null"));
+    this.keyVault = Objects.requireNonNull(keyVault, "keyVault must not be null");
   }
 
   @Override
@@ -181,10 +184,28 @@ public final class JdbcInvoiceRepository implements InvoiceRepository {
     return id;
   }
 
+  /**
+   * Two statements, not one: {@code subject_key.subject_id} REFERENCES {@code buyer.id} (V6), so
+   * the buyer row must exist before {@link KeyVaultPort#getOrCreateKey} can persist a key against
+   * it — but the key is needed to encrypt the very fields the INSERT would carry. Nothing else can
+   * observe this row between the two statements (its id isn't returned to any other caller until
+   * this method itself returns), so the brief placeholder state is not a real inconsistency window.
+   */
   private UUID insertBuyer(Buyer buyer) {
     UUID id = UUID.randomUUID();
-    jdbc.sql("INSERT INTO buyer (id, name, tax_identifier, country_code) VALUES (?, ?, ?, ?)")
-        .params(id, buyer.name(), buyer.taxIdentifier().orElse(null), buyer.countryCode())
+    jdbc.sql("INSERT INTO buyer (id, name_encrypted, tax_identifier, country_code) VALUES (?, ?, ?, ?)")
+        .params(id, new byte[0], buyer.taxIdentifier().orElse(null), buyer.countryCode())
+        .update();
+
+    byte[] key = keyVault.getOrCreateKey(id);
+    jdbc.sql(
+            "UPDATE buyer SET name_encrypted = ?, address_encrypted = ?, email_encrypted = ?, phone_encrypted = ? WHERE id = ?")
+        .params(
+            PiiCipher.encrypt(key, buyer.name()),
+            buyer.address().map(a -> PiiCipher.encrypt(key, a)).orElse(null),
+            buyer.email().map(e -> PiiCipher.encrypt(key, e)).orElse(null),
+            buyer.phone().map(p -> PiiCipher.encrypt(key, p)).orElse(null),
+            id)
         .update();
     return id;
   }
@@ -196,15 +217,61 @@ public final class JdbcInvoiceRepository implements InvoiceRepository {
         .single();
   }
 
+  /**
+   * RF-007: once {@code subjectId}'s key has been destroyed (crypto-shredded), the encrypted
+   * columns are permanently unreadable — this is what "suppression" means, not an error state to
+   * work around. {@code keyVault.hasKey} is checked BEFORE ever calling {@link
+   * KeyVaultPort#getOrCreateKey}: that method's own contract is create-on-first-use, so calling it
+   * here on a suppressed subject would silently mint a brand new key that could never have
+   * decrypted the old ciphertext anyway — the wrong tool for a read path.
+   */
   private Buyer findBuyerById(UUID id) {
-    return jdbc.sql("SELECT name, tax_identifier, country_code FROM buyer WHERE id = ?")
-        .param(id)
-        .query(
-            (rs, rowNum) ->
-                new Buyer(
-                    rs.getString("name"), Optional.ofNullable(rs.getString("tax_identifier")),
-                    rs.getString("country_code")))
-        .single();
+    BuyerRow row =
+        jdbc.sql(
+                "SELECT name_encrypted, tax_identifier, country_code, address_encrypted, email_encrypted, phone_encrypted FROM buyer WHERE id = ?")
+            .param(id)
+            .query(JdbcInvoiceRepository::mapBuyerRow)
+            .single();
+
+    if (!keyVault.hasKey(id)) {
+      return new Buyer(
+          "[SUPPRESSED]", Optional.ofNullable(row.taxIdentifier()), row.countryCode(),
+          Optional.empty(), Optional.empty(), Optional.empty());
+    }
+
+    byte[] key = keyVault.getOrCreateKey(id);
+    return new Buyer(
+        decrypt(key, row.nameEncrypted()),
+        Optional.ofNullable(row.taxIdentifier()),
+        row.countryCode(),
+        Optional.ofNullable(row.addressEncrypted()).map(blob -> decrypt(key, blob)),
+        Optional.ofNullable(row.emailEncrypted()).map(blob -> decrypt(key, blob)),
+        Optional.ofNullable(row.phoneEncrypted()).map(blob -> decrypt(key, blob)));
+  }
+
+  private static String decrypt(byte[] key, byte[] blob) {
+    try {
+      return PiiCipher.decrypt(key, blob);
+    } catch (javax.crypto.AEADBadTagException e) {
+      // hasKey() was true a moment ago, so this key was never destroyed mid-read — an
+      // AEADBadTagException here means the stored ciphertext itself does not match this key,
+      // which is a data-integrity problem, not the ordinary "subject was suppressed" path above.
+      throw new IllegalStateException("could not decrypt buyer PII with its own subject key", e);
+    }
+  }
+
+  private record BuyerRow(
+      byte[] nameEncrypted, String taxIdentifier, String countryCode, byte[] addressEncrypted,
+      byte[] emailEncrypted, byte[] phoneEncrypted) {}
+
+  private static BuyerRow mapBuyerRow(ResultSet rs, int rowNum) throws SQLException {
+    return new BuyerRow(
+        rs.getBytes("name_encrypted"),
+        rs.getString("tax_identifier"),
+        rs.getString("country_code"),
+        rs.getBytes("address_encrypted"),
+        rs.getBytes("email_encrypted"),
+        rs.getBytes("phone_encrypted"));
   }
 
   private List<InvoiceLine> findLines(UUID invoiceId, Currency currency) {

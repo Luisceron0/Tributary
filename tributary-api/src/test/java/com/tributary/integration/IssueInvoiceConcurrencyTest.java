@@ -22,6 +22,7 @@ import com.tributary.persistence.DataSourceFactory;
 import com.tributary.persistence.FlywayMigrator;
 import com.tributary.persistence.JdbcInvoiceRepository;
 import com.tributary.persistence.JdbcIssuanceAttemptRepository;
+import com.tributary.persistence.JdbcKeyVaultRepository;
 import java.time.LocalDate;
 import java.util.Currency;
 import java.util.List;
@@ -70,7 +71,7 @@ class IssueInvoiceConcurrencyTest {
   @Test
   @DisplayName("T-308's literal criterion: 20 threads on the same document produce exactly one issuance")
   void twentyThreadsOnTheSameDocumentProduceExactlyOneIssuance() throws InterruptedException {
-    JdbcInvoiceRepository invoiceRepository = new JdbcInvoiceRepository(dataSource);
+    JdbcInvoiceRepository invoiceRepository = new JdbcInvoiceRepository(dataSource, new JdbcKeyVaultRepository(dataSource));
     JdbcIssuanceAttemptRepository attemptRepository = new JdbcIssuanceAttemptRepository(dataSource);
 
     InvoiceLine line =

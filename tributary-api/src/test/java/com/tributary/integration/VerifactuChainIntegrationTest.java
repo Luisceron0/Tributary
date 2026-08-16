@@ -126,10 +126,13 @@ class VerifactuChainIntegrationTest {
     return id;
   }
 
+  // name_encrypted is a placeholder blob, not a real PiiCipher ciphertext (T-601) — this test
+  // never reads the buyer back through JdbcInvoiceRepository's decrypt path, only needs a row to
+  // satisfy invoice's FK.
   private static UUID insertBuyer(JdbcClient jdbc, Buyer buyer) {
     UUID id = UUID.randomUUID();
-    jdbc.sql("INSERT INTO buyer (id, name, tax_identifier, country_code) VALUES (?, ?, ?, ?)")
-        .params(id, buyer.name(), buyer.taxIdentifier().orElse(null), buyer.countryCode())
+    jdbc.sql("INSERT INTO buyer (id, name_encrypted, tax_identifier, country_code) VALUES (?, ?, ?, ?)")
+        .params(id, new byte[] {0}, buyer.taxIdentifier().orElse(null), buyer.countryCode())
         .update();
     return id;
   }

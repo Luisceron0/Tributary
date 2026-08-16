@@ -29,8 +29,9 @@ class JdbcKeyVaultRepositoryTest extends AbstractPostgresTest {
     try (var connection = dataSource.getConnection();
         var statement =
             connection.prepareStatement(
-                "INSERT INTO buyer (id, name, country_code) VALUES (?, 'Placeholder', 'DE')")) {
+                "INSERT INTO buyer (id, name_encrypted, country_code) VALUES (?, ?, 'DE')")) {
       statement.setObject(1, id);
+      statement.setBytes(2, new byte[0]); // placeholder — this test never decrypts it
       statement.executeUpdate();
     } catch (Exception e) {
       throw new RuntimeException(e);

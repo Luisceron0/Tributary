@@ -18,11 +18,17 @@ final class TestFixtures {
     return id;
   }
 
+  /**
+   * name_encrypted is a placeholder blob, not a real {@code PiiCipher} ciphertext — none of this
+   * fixture's six callers ever decrypt it (they only need a buyer row to satisfy invoice's FK);
+   * {@link JdbcInvoiceRepositoryTest} and {@link JdbcKeyVaultRepositoryTest}, which DO exercise
+   * real encryption/decryption, build their own buyers through the real code path instead.
+   */
   static UUID insertBuyer(DataSource dataSource) {
     UUID id = UUID.randomUUID();
     JdbcClient.create(dataSource)
-        .sql("INSERT INTO buyer (id, name, tax_identifier, country_code) VALUES (?, ?, ?, ?)")
-        .params(id, "Handel GmbH", "DE123456789", "DE")
+        .sql("INSERT INTO buyer (id, name_encrypted, tax_identifier, country_code) VALUES (?, ?, ?, ?)")
+        .params(id, new byte[] {0}, "DE123456789", "DE")
         .update();
     return id;
   }

@@ -26,7 +26,7 @@ class JdbcInvoiceRepositoryTest extends AbstractPostgresTest {
   private static final Buyer BUYER = Buyer.withTaxIdentifier("Handel GmbH", "DE123456789", "DE");
 
   private JdbcInvoiceRepository repository() {
-    return new JdbcInvoiceRepository(dataSource);
+    return new JdbcInvoiceRepository(dataSource, new JdbcKeyVaultRepository(dataSource));
   }
 
   private Invoice sampleInvoice(String businessKey) {
@@ -97,6 +97,86 @@ class JdbcInvoiceRepositoryTest extends AbstractPostgresTest {
   @DisplayName("an unknown businessKey returns empty")
   void unknownBusinessKeyReturnsEmpty() {
     assertTrue(repository().findByBusinessKey("never-existed").isEmpty());
+  }
+
+  @Test
+  @DisplayName("T-601/RF-007: buyer PII round-trips exactly, and the stored bytes never contain the plaintext — checked with a raw SQL read, not through this repository's own decrypt path")
+  void buyerPiiRoundTripsAndIsGenuinelyEncryptedAtRest() {
+    Buyer buyerWithPii =
+        Buyer.withTaxIdentifier("Handel GmbH", "DE999888777", "DE")
+            .withPersonalData(
+                Optional.of("Hauptstraße 1, 10115 Berlin"), Optional.of("buyer@handel.de"),
+                Optional.of("+49 30 1234567"));
+    InvoiceLine line =
+        InvoiceLine.standardRate(
+            "1", "Widgets", Quantity.of("1", "C62"), Money.of("100.00", EUR), Money.zero(EUR),
+            TaxRate.ofPercent("19"));
+    Invoice invoice =
+        Invoice.draft(
+            "biz-" + java.util.UUID.randomUUID(), ISSUER, buyerWithPii, EUR, LocalDate.of(2026, 8, 15),
+            List.of(line), Money.zero(EUR));
+
+    JdbcInvoiceRepository repo = repository();
+    repo.save(invoice);
+    Invoice found = repo.findByBusinessKey(invoice.businessKey()).orElseThrow();
+
+    assertEquals(buyerWithPii.name(), found.buyer().name());
+    assertEquals(buyerWithPii.address(), found.buyer().address());
+    assertEquals(buyerWithPii.email(), found.buyer().email());
+    assertEquals(buyerWithPii.phone(), found.buyer().phone());
+
+    // RF-007's own literal acceptance criterion, checked at the SQL level, not through PiiCipher —
+    // "el texto claro no aparece en ningún volcado de la base de datos" (pg_dump would show these
+    // exact bytes).
+    var jdbc = org.springframework.jdbc.core.simple.JdbcClient.create(dataSource);
+    byte[][] blobs =
+        jdbc.sql("SELECT name_encrypted, address_encrypted, email_encrypted, phone_encrypted FROM buyer WHERE tax_identifier = ?")
+            .param(buyerWithPii.taxIdentifier().orElseThrow())
+            .query(
+                (rs, rowNum) ->
+                    new byte[][] {
+                      rs.getBytes("name_encrypted"), rs.getBytes("address_encrypted"),
+                      rs.getBytes("email_encrypted"), rs.getBytes("phone_encrypted")
+                    })
+            .single();
+    String[] plaintexts = {"Handel GmbH", "Hauptstraße 1, 10115 Berlin", "buyer@handel.de", "+49 30 1234567"};
+    for (int i = 0; i < blobs.length; i++) {
+      String rawBytesAsLatin1 = new String(blobs[i], java.nio.charset.StandardCharsets.ISO_8859_1);
+      assertTrue(
+          !rawBytesAsLatin1.contains(plaintexts[i]),
+          "column " + i + " leaks its plaintext as a literal substring in the raw stored bytes");
+    }
+  }
+
+  @Test
+  @DisplayName("ADR-004: two buyers with the IDENTICAL name get DIFFERENT ciphertext bytes for it — a random IV per operation, not derived from content")
+  void identicalNamesProduceDifferentCiphertextAcrossBuyers() {
+    InvoiceLine line =
+        InvoiceLine.standardRate(
+            "1", "Widgets", Quantity.of("1", "C62"), Money.of("100.00", EUR), Money.zero(EUR),
+            TaxRate.ofPercent("19"));
+    Buyer sameNameBuyerA = Buyer.withTaxIdentifier("Identical Name GmbH", "DE111111111", "DE");
+    Buyer sameNameBuyerB = Buyer.withTaxIdentifier("Identical Name GmbH", "DE222222222", "DE");
+
+    JdbcInvoiceRepository repo = repository();
+    repo.save(
+        Invoice.draft(
+            "biz-" + java.util.UUID.randomUUID(), ISSUER, sameNameBuyerA, EUR, LocalDate.of(2026, 8, 15),
+            List.of(line), Money.zero(EUR)));
+    repo.save(
+        Invoice.draft(
+            "biz-" + java.util.UUID.randomUUID(), ISSUER, sameNameBuyerB, EUR, LocalDate.of(2026, 8, 15),
+            List.of(line), Money.zero(EUR)));
+
+    var jdbc = org.springframework.jdbc.core.simple.JdbcClient.create(dataSource);
+    byte[] nameA =
+        jdbc.sql("SELECT name_encrypted FROM buyer WHERE tax_identifier = ?").param("DE111111111").query(byte[].class).single();
+    byte[] nameB =
+        jdbc.sql("SELECT name_encrypted FROM buyer WHERE tax_identifier = ?").param("DE222222222").query(byte[].class).single();
+
+    assertTrue(
+        !java.util.Arrays.equals(nameA, nameB),
+        "identical plaintext under different keys/IVs must never produce identical ciphertext");
   }
 
   @Test
