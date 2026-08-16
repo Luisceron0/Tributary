@@ -1,0 +1,11 @@
+{
+  "saleId": "demo-001",
+  "issuer": {"name": "Acme Exports SL", "taxIdentifier": "ESB12345678", "countryCode": "ES"},
+  "buyer": {"name": "Handel GmbH", "taxIdentifier": "DE123456789", "countryCode": "DE"},
+  "currency": "EUR",
+  "issueDate": "2026-08-16",
+  "lines": [
+    {"lineIdentifier": "1", "itemName": "Widgets", "quantity": 1, "unitCode": "C62",
+     "unitPrice": 100.00, "taxCategory": "STANDARD", "taxRate": 19}
+  ]
+}

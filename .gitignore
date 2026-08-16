@@ -12,6 +12,8 @@
 *.pfx
 secrets/
 credentials.json
+# T-705: throwaway demo JWT keypair + minted tokens (scripts/demo/setup.sh regenerates on demand).
+.demo/
 
 # --- Build ------------------------------------------------------------------
 target/
