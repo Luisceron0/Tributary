@@ -1,13 +1,13 @@
 title = "tributary gitleaks config"
 
 # Extends (does not replace) gitleaks' default ruleset. The full default
-# ruleset stays in effect; only the narrow exception below is added on top.
+# ruleset stays in effect; only the narrow exceptions below are added on top.
 # Never widen this file to a blanket path or rule exemption — see the
 # pre-commit hook's own rejection message and SRS R-01.
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = '''
 T-307: this project's own live-chaos-test business keys are not credentials.
 FactusChaosLiveSandboxTest (and its future ES/DE equivalents, phases 5/6)
@@ -21,4 +21,19 @@ anything. Scoped to the exact "chaos-<uuid>" shape, nothing broader.
 '''
 regexes = [
   '''chaos-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''',
+]
+
+[[allowlists]]
+description = '''
+T-701: LogRedactorTest and RequestLoggingFilterTest need a string with the
+exact three-segment JWT shape to prove LogRedactor's own regex and
+RequestLoggingFilter's log output handle it correctly — a real JWT header
+and payload segment ("eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJvcGVyYXRvcjphbGljZSJ9",
+i.e. {"alg":"RS256"} and {"sub":"operator:alice"}) followed by a signature
+segment that is a literal, human-readable "not a real secret" marker rather
+than base64url — it can never be mistaken for, or collide with, an actually
+leaked token. Scoped to the exact marker suffix, nothing broader.
+'''
+regexes = [
+  '''eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.NOT-A-REAL-SECRET-TEST-FIXTURE-ONLY''',
 ]
