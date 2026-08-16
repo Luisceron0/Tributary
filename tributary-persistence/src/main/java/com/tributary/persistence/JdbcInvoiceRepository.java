@@ -2,6 +2,7 @@ package com.tributary.persistence;
 
 import com.tributary.application.port.InvoiceRepository;
 import com.tributary.application.port.KeyVaultPort;
+import com.tributary.application.port.RetentionCheckPort;
 import com.tributary.domain.Buyer;
 import com.tributary.domain.DocumentState;
 import com.tributary.domain.Invoice;
@@ -29,7 +30,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * state} ever changes across an {@code Invoice}'s life) is mirrored here: a second {@link #save}
  * for an already-known {@code business_key} updates {@code invoice.state} only.
  */
-public final class JdbcInvoiceRepository implements InvoiceRepository {
+public final class JdbcInvoiceRepository implements InvoiceRepository, RetentionCheckPort {
 
   private final JdbcClient jdbc;
   private final KeyVaultPort keyVault;
@@ -166,6 +167,26 @@ public final class JdbcInvoiceRepository implements InvoiceRepository {
             .params(to.name(), businessKey, from.name())
             .update();
     return rowsAffected == 1;
+  }
+
+  /**
+   * T-602 / RF-007: {@code buyerId}'s scope simplification of "an active retention obligation" —
+   * see {@link RetentionCheckPort}'s own class note for why. {@code ISSUED},
+   * {@code ISSUED_WITH_WARNINGS}, {@code REJECTED} and {@code MANUAL_REVIEW} are {@code
+   * DocumentState}'s own terminal states (T-102) — anything else (DRAFT, SUBMITTING,
+   * NEEDS_RECONCILIATION) means a document involving this buyer is still mid-transaction.
+   */
+  @Override
+  public boolean hasActiveRetentionObligation(UUID buyerId) {
+    Objects.requireNonNull(buyerId, "buyerId must not be null");
+    long nonTerminalCount =
+        jdbc.sql(
+                "SELECT count(*) FROM invoice WHERE buyer_id = ? "
+                    + "AND state NOT IN ('ISSUED', 'ISSUED_WITH_WARNINGS', 'REJECTED', 'MANUAL_REVIEW')")
+            .param(buyerId)
+            .query(Long.class)
+            .single();
+    return nonTerminalCount > 0;
   }
 
   private UUID upsertIssuer(Issuer issuer) {

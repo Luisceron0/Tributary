@@ -1,6 +1,7 @@
 package com.tributary.persistence;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.tributary.domain.Buyer;
@@ -15,6 +16,7 @@ import java.time.LocalDate;
 import java.util.Currency;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -177,6 +179,64 @@ class JdbcInvoiceRepositoryTest extends AbstractPostgresTest {
     assertTrue(
         !java.util.Arrays.equals(nameA, nameB),
         "identical plaintext under different keys/IVs must never produce identical ciphertext");
+  }
+
+  @Test
+  @DisplayName("T-602: a buyer with a DRAFT invoice has an active retention obligation")
+  void draftInvoiceIsAnActiveRetentionObligation() {
+    Buyer buyer = Buyer.withTaxIdentifier("Retention Test GmbH", "DE333333333", "DE");
+    InvoiceLine line =
+        InvoiceLine.standardRate(
+            "1", "Widgets", Quantity.of("1", "C62"), Money.of("100.00", EUR), Money.zero(EUR),
+            TaxRate.ofPercent("19"));
+    Invoice draft =
+        Invoice.draft(
+            "biz-" + java.util.UUID.randomUUID(), ISSUER, buyer, EUR, LocalDate.of(2026, 8, 15),
+            List.of(line), Money.zero(EUR));
+
+    JdbcInvoiceRepository repo = repository();
+    repo.save(draft);
+    UUID buyerId = buyerIdFor(draft.businessKey());
+
+    assertTrue(repo.hasActiveRetentionObligation(buyerId), "a DRAFT invoice is still mid-transaction");
+  }
+
+  @Test
+  @DisplayName("T-602: a buyer whose only invoice reached a terminal state (ISSUED) has no active retention obligation")
+  void terminalInvoiceIsNotAnActiveRetentionObligation() {
+    Buyer buyer = Buyer.withTaxIdentifier("Retention Test 2 GmbH", "DE444444444", "DE");
+    InvoiceLine line =
+        InvoiceLine.standardRate(
+            "1", "Widgets", Quantity.of("1", "C62"), Money.of("100.00", EUR), Money.zero(EUR),
+            TaxRate.ofPercent("19"));
+    Invoice draft =
+        Invoice.draft(
+            "biz-" + java.util.UUID.randomUUID(), ISSUER, buyer, EUR, LocalDate.of(2026, 8, 15),
+            List.of(line), Money.zero(EUR));
+
+    JdbcInvoiceRepository repo = repository();
+    repo.save(draft);
+    UUID buyerId = buyerIdFor(draft.businessKey());
+    UUID invoiceId =
+        org.springframework.jdbc.core.simple.JdbcClient.create(dataSource)
+            .sql("SELECT id FROM invoice WHERE business_key = ?")
+            .param(draft.businessKey())
+            .query((rs, rowNum) -> (UUID) rs.getObject("id"))
+            .single();
+    // T-203's own trigger requires a real issuance_attempt before ISSUED is a legal transition.
+    TestFixtures.insertAcceptedIssuanceAttempt(dataSource, invoiceId, "ext-ref-" + invoiceId);
+    repo.tryTransition(draft.businessKey(), DocumentState.DRAFT, DocumentState.SUBMITTING);
+    repo.tryTransition(draft.businessKey(), DocumentState.SUBMITTING, DocumentState.ISSUED);
+
+    assertFalse(repo.hasActiveRetentionObligation(buyerId), "ISSUED is a terminal state — nothing is still in flight");
+  }
+
+  private UUID buyerIdFor(String businessKey) {
+    return org.springframework.jdbc.core.simple.JdbcClient.create(dataSource)
+        .sql("SELECT buyer_id FROM invoice WHERE business_key = ?")
+        .param(businessKey)
+        .query((rs, rowNum) -> (UUID) rs.getObject("buyer_id"))
+        .single();
   }
 
   @Test
