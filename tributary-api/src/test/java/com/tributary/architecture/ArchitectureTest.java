@@ -15,6 +15,9 @@ import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.tngtech.archunit.library.dependencies.SlicesRuleDefinition;
 import java.util.List;
 import java.util.Locale;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.SAXParserFactory;
+import javax.xml.stream.XMLInputFactory;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -112,6 +115,25 @@ class ArchitectureTest {
             // once real adapter classes exist, still fails the rule. The falsifiability probe for
             // this task added throwaway classes to two adapter packages to confirm exactly that.
             .allowEmptyShould(true);
+
+    rule.check(allClasses);
+  }
+
+  @Test
+  @DisplayName(
+      "T-501: no class other than SecureXmlFactory constructs a DOM/SAX/StAX parser directly — "
+          + "CV-04's hardening (T-500) can't be bypassed by a second, unhardened one")
+  void onlySecureXmlFactoryConstructsXmlParsers() {
+    ArchRule rule =
+        noClasses()
+            .that()
+            .doNotHaveFullyQualifiedName("com.tributary.adapter.de.SecureXmlFactory")
+            .should()
+            .callMethod(DocumentBuilderFactory.class, "newInstance")
+            .orShould()
+            .callMethod(SAXParserFactory.class, "newInstance")
+            .orShould()
+            .callMethod(XMLInputFactory.class, "newInstance");
 
     rule.check(allClasses);
   }

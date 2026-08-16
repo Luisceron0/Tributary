@@ -283,10 +283,19 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ## Fase 5 — Adaptador DE / XRechnung (día 5) · paralelizable con fases 3 y 4
 
-- [ ] **T-500** `SecureXmlFactory`: única vía de creación de parsers
+- [x] **T-500** `SecureXmlFactory`: única vía de creación de parsers
   - DTD off, entidades externas off, `FEATURE_SECURE_PROCESSING` on, límites de tamaño y profundidad
-- [ ] **T-501** Regla ArchUnit: prohibido instanciar parsers XML fuera de la factoría
+  - **Probado empíricamente contra el JDK real de este entorno (25.0.2) antes de escribir una sola línea**, no contra documentación: un `DocumentBuilderFactory` sin configurar filtra de verdad el contenido de `/etc/passwd` al DOM (XXE real, no teórico, en este entorno); ese mismo JDK sin configurar además rechaza ya por su cuenta más de 100 niveles de anidación y más de 2500 expansiones de entidad — límites de fábrica de una versión reciente de JAXP, no garantizados en cualquier JDK
+  - `disallow-doctype-decl=true` es la defensa primaria (sin DOCTYPE no hay declaración de entidad posible, externa o interna — cierra XXE y "billion laughs" en un solo golpe); `FEATURE_SECURE_PROCESSING`, `external-general/parameter-entities=false` y `setXIncludeAware(false)` quedan como defensa en profundidad explícita, no implícita (§5.3: "sin configuración por defecto heredada de la librería")
+  - `MAX_ELEMENT_DEPTH=64`, elegido deliberadamente **por debajo** del default de 100 de este JDK (ver L-021) para que el límite propio sea demostrablemente el que actúa, no una coincidencia con la plataforma. `MAX_INPUT_BYTES=5 MiB` vía un `InputStream` que cuenta bytes y falla antes de completar el búfer, no una comprobación posterior a cargar todo en memoria
+  - `mvn test -pl tributary-adapter-de-en16931` → `Tests run: 7, Failures: 0`. TDD: el test se escribió primero, visto en rojo (`cannot find symbol: SecureXmlFactory`)
+  - **Bug real encontrado por el propio test, antes de cualquier commit:** el límite de tamaño rechazaba un documento de exactamente `MAX_INPUT_BYTES` (el guard usaba `>=` en vez de `>`, cortando un byte antes de confirmar que realmente sobraba). Corregido: se permite un byte de más para distinguir "exactamente en el límite, luego EOF" de "excede el límite"
+  - **Prueba de falsabilidad (la que importa, ver L-021):** se quitó la línea `setAttribute(maxElementDepth, 64)`. El test de profundidad (74 niveles, sin entidades) pasó de rojo a verde — el JDK seguía bloqueando por su propio default de 100, así que un documento de 74 niveles ya no lo alcanzaba. Revertido y re-verificado en verde (7/7)
+- [x] **T-501** Regla ArchUnit: prohibido instanciar parsers XML fuera de la factoría
   - Verificación: la regla falla en rojo cuando se introduce deliberadamente una instanciación directa
+  - `noClasses().that().doNotHaveFullyQualifiedName(SecureXmlFactory)...should().callMethod(...)` sobre `DocumentBuilderFactory`/`SAXParserFactory`/`XMLInputFactory` — las tres formas estándar de crear un parser DOM/SAX/StAX en Java. `TransformerFactory`/`SchemaFactory` deliberadamente fuera: nada en el módulo los usa hoy (la validación XSD/Schematron se delega entera al subproceso KoSIT externo, T-504), incluirlos habría sido regla decorativa sin nada que vigilar todavía
+  - `mvn test -pl tributary-api -Dtest=ArchitectureTest` → `Tests run: 4, Failures: 0` (3 previas de T-105 + esta)
+  - **Prueba de falsabilidad:** se añadió `ScratchParserLeakProbe` (clase descartable en `com.tributary.adapter.de`, fuera de `SecureXmlFactory`) con una llamada directa a `DocumentBuilderFactory.newInstance()`. La regla lo detectó de inmediato (`Architecture Violation ... was violated (1 times)`). Eliminada la clase y re-verificado en verde (4/4)
 - [ ] **T-502** Sonda XXE — **CV-04**
   - Verificación: documento con entidad externa apuntando a `file:///etc/passwd` → excepción de parseo, sin lectura de archivo, sin conexión saliente observada
   - Evidencia: log del parser + captura de tráfico vacía
