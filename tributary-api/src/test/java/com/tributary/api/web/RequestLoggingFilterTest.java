@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.tributary.api.security.ActorCaptureFilter;
 import jakarta.servlet.FilterChain;
-import java.time.Instant;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,15 +14,19 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 /**
  * T-701: proves, against the filter's actual rendered log output (not just by reading the source),
  * that a real bearer token attached to the request never reaches the {@code "tributary.access"}
  * logger — neither in the formatted message nor in any MDC field. A {@link ListAppender} attached
  * directly to the logback logger captures exactly what would have been written to the console.
+ *
+ * <p>This is a unit test of {@link RequestLoggingFilter} in isolation: it sets the {@link
+ * ActorCaptureFilter#ACTOR_ATTRIBUTE} request attribute directly, the way {@link ActorCaptureFilter}
+ * would in the real, fully-wired chain, rather than going through Spring Security itself. It does
+ * NOT prove the two filters cooperate correctly when actually wired together in {@code
+ * SecurityConfig} — that gap is exactly what let the original "always anonymous" bug (lessons.md)
+ * through undetected; {@code ActorLoggingIntegrationTest} covers the real, wired chain instead.
  */
 class RequestLoggingFilterTest {
 
@@ -45,9 +49,8 @@ class RequestLoggingFilterTest {
   }
 
   @AfterEach
-  void detachAppenderAndClearSecurityContext() {
+  void detachAppender() {
     accessLogger.detachAppender(appender);
-    SecurityContextHolder.clearContext();
   }
 
   @Test
@@ -78,19 +81,9 @@ class RequestLoggingFilterTest {
   }
 
   @Test
-  void logsMethodPathStatusAndActorFromTheJwtSubject() throws Exception {
-    Jwt jwt =
-        Jwt.withTokenValue("irrelevant")
-            .header("alg", "RS256")
-            .claim("sub", "operator:alice")
-            .subject("operator:alice")
-            .issuedAt(Instant.now())
-            .expiresAt(Instant.now().plusSeconds(60))
-            .build();
-    SecurityContextHolder.getContext()
-        .setAuthentication(new JwtAuthenticationToken(jwt, java.util.List.of()));
-
+  void logsMethodPathStatusAndActorFromTheCapturedAttribute() throws Exception {
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/invoices/rc1-1");
+    request.setAttribute(ActorCaptureFilter.ACTOR_ATTRIBUTE, "operator:alice");
     MockHttpServletResponse response = new MockHttpServletResponse();
     response.setStatus(200);
     FilterChain noopChain = (req, res) -> {};

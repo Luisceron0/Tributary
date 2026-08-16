@@ -79,10 +79,16 @@ public class SecurityConfig {
   }
 
   @Bean
+  public ActorCaptureFilter actorCaptureFilter() {
+    return new ActorCaptureFilter();
+  }
+
+  @Bean
   public SecurityFilterChain filterChain(
       HttpSecurity http,
       HostAllowlistFilter hostAllowlistFilter,
       com.tributary.api.web.RequestLoggingFilter requestLoggingFilter,
+      ActorCaptureFilter actorCaptureFilter,
       @Value("${tributary.security.cors-allowed-origins:}") String corsAllowedOrigins) throws Exception {
     http.csrf(csrf -> csrf.disable()) // stateless bearer-token API: no cookie/session to forge
         .cors(cors -> cors.configurationSource(corsConfigurationSource(corsAllowedOrigins)))
@@ -97,6 +103,15 @@ public class SecurityConfig {
         // or authentication/authorization reject downstream — a wrapping filter (try/finally
         // around the rest of the chain) still sees the final response status either way.
         .addFilterBefore(requestLoggingFilter, HostAllowlistFilter.class)
+        // Positioned AFTER JWT authentication resolves, BEFORE the authorization decision — see
+        // ActorCaptureFilter's own Javadoc: this is the one point where the security context is
+        // both populated (authentication has run) and not yet cleared, and it stashes the actor
+        // into a request attribute that survives the later clearing, for requestLoggingFilter to
+        // read back once it's outside the chain.
+        .addFilterAfter(
+            actorCaptureFilter,
+            org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter
+                .class)
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
             authorize ->
