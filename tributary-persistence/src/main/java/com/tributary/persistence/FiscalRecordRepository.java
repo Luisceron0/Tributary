@@ -109,4 +109,25 @@ public final class FiscalRecordRepository implements FiscalRecordPort {
                     rs.getTimestamp("created_at").toInstant()))
         .optional();
   }
+
+  @Override
+  public Optional<RecordSummary> findLatestByInvoiceIdAndRecordType(UUID invoiceId, String recordType) {
+    Objects.requireNonNull(invoiceId, "invoiceId must not be null");
+    Objects.requireNonNull(recordType, "recordType must not be null");
+    return jdbc.sql(
+            """
+            SELECT id, hash, previous_hash, sequence, created_at FROM fiscal_record
+            WHERE invoice_id = ? AND record_type = ? ORDER BY sequence DESC LIMIT 1
+            """)
+        .params(invoiceId, recordType)
+        .query(
+            (rs, rowNum) ->
+                new RecordSummary(
+                    (UUID) rs.getObject("id"),
+                    rs.getString("hash"),
+                    Optional.ofNullable(rs.getString("previous_hash")),
+                    rs.getLong("sequence"),
+                    rs.getTimestamp("created_at").toInstant()))
+        .optional();
+  }
 }

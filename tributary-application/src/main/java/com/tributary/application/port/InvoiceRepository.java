@@ -3,6 +3,7 @@ package com.tributary.application.port;
 import com.tributary.domain.DocumentState;
 import com.tributary.domain.Invoice;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Persistence port for invoices. A real, PostgreSQL-backed implementation with the chain triggers
@@ -30,4 +31,13 @@ public interface InvoiceRepository {
    * irreversible side effect, so only the caller that genuinely wins the race proceeds.
    */
   boolean tryTransition(String businessKey, DocumentState from, DocumentState to);
+
+  /**
+   * The persistence-layer surrogate id for {@code businessKey} — never exposed on the domain
+   * {@link Invoice} itself (T-106's own established pattern: the domain has no concept of a
+   * database row id). Added for T-602-style callers that need to satisfy a foreign key elsewhere
+   * (e.g. {@code fiscal_record.invoice_id}) without the application layer ever depending on
+   * {@code tributary-persistence} directly.
+   */
+  Optional<UUID> findIdByBusinessKey(String businessKey);
 }

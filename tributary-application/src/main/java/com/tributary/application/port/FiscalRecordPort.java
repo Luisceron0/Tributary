@@ -44,4 +44,14 @@ public interface FiscalRecordPort {
       BiFunction<Optional<ChainHead>, Long, NewRecord> computeNewRecord);
 
   Optional<RecordSummary> findById(UUID recordId);
+
+  /**
+   * The most recent record of {@code recordType} for {@code invoiceId} — what {@link
+   * com.tributary.adapter.es.VerifactuFiscalRegimeAdapter} (phase 7) uses for two different
+   * reasons: {@code query()} to answer "was this actually recorded" from the chain itself rather
+   * than trusting local {@code invoice.state} (a crash can leave the two disagreeing), and {@code
+   * cancel()} to find the ISSUANCE record's own hash to reference from a new ANULACIÓN record
+   * (RF-004: a correction always references the original by its hash, never edits it).
+   */
+  Optional<RecordSummary> findLatestByInvoiceIdAndRecordType(UUID invoiceId, String recordType);
 }

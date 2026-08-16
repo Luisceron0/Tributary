@@ -68,6 +68,7 @@ class ReconcileInvoiceUseCaseTest {
 
   private static final class InMemoryInvoiceRepository implements InvoiceRepository {
     private final Map<String, Invoice> byKey = new HashMap<>();
+    private final Map<String, java.util.UUID> idsByKey = new HashMap<>();
 
     @Override
     public Optional<Invoice> findByBusinessKey(String businessKey) {
@@ -75,8 +76,14 @@ class ReconcileInvoiceUseCaseTest {
     }
 
     @Override
+    public Optional<java.util.UUID> findIdByBusinessKey(String businessKey) {
+      return Optional.ofNullable(idsByKey.get(businessKey));
+    }
+
+    @Override
     public void save(Invoice invoice) {
       byKey.put(invoice.businessKey(), invoice);
+      idsByKey.computeIfAbsent(invoice.businessKey(), key -> java.util.UUID.randomUUID());
     }
 
     @Override

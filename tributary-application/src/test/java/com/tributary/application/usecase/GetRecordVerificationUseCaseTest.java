@@ -35,6 +35,11 @@ class GetRecordVerificationUseCaseTest {
     public Optional<RecordSummary> findById(UUID recordId) {
       return Optional.ofNullable(summary);
     }
+
+    @Override
+    public Optional<RecordSummary> findLatestByInvoiceIdAndRecordType(UUID invoiceId, String recordType) {
+      throw new UnsupportedOperationException("not needed for this test");
+    }
   }
 
   @Test

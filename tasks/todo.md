@@ -389,6 +389,14 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ## Fase 7 — Endurecimiento y documentación (día 7)
 
+**Trabajo de plomería previo, no numerado, necesario para que T-404/405, T-604/605/606 y T-700+ tengan algo real que exponer (2026-08-16):**
+
+- **`VerifactuFiscalRegimeAdapter implements FiscalRegimePort`** (ES, real por primera vez — hasta ahora solo existían las piezas sueltas de fase 4: `VerifactuHasher`/`VerifactuQrGenerator`, sin nada que las uniera con persistencia). `issue()` escribe un registro de alta encadenado real; `cancel()` (RF-004) escribe un registro de anulación real referenciando el hash del alta por `FiscalRecordPort.findLatestByInvoiceIdAndRecordType` (método nuevo en el puerto, necesario porque no existía forma de preguntar "¿ya existe un registro para esta factura?" sin él); `query()` responde consultando `fiscal_record` de verdad, no confiando en `invoice.state` local (misma razón que RF-008 ya aplica a CO: un crash puede dejar los dos en desacuerdo)
+  - **Decisión de arquitectura real, no trivial:** la cadena es **por emisor, no por factura** — RD 1007/2023 diseña un único libro continuo por obligado tributario, y SRS §3 ("un solo emisor, sin multi-tenency") implica que hay exactamente una cadena por despliegue. `chainId` se deriva determinísticamente del NIF del emisor (`UUID.nameUUIDFromBytes`), no se genera al azar ni se guarda aparte — el mismo emisor siempre retoma la misma cadena tras un reinicio
+  - `InvoiceRepository` ganó `findIdByBusinessKey` — el dominio (`Invoice`) nunca ha tenido un id de persistencia propio (mismo patrón que T-602 ya encontró), pero `FiscalRecordPort.append` sí necesita ese UUID real para la FK `fiscal_record.invoice_id`
+  - `mvn test -pl tributary-adapter-es-verifactu -Dtest=VerifactuFiscalRegimeAdapterTest` → `Tests run: 5, Failures: 0`, con un doble hecho a mano de `FiscalRecordPort` (este módulo depende solo de `tributary-application`, nunca de `tributary-persistence` — mismo patrón que las pruebas de contrato de Factus usan WireMock en vez de un servidor real)
+  - **Prueba de falsabilidad:** se cambió `chainIdFor` para devolver `UUID.randomUUID()` en vez de la derivación determinística. `chainIdIsDeterministicPerIssuer` lo detectó de inmediato. Revertido, `mvn test` completo del repo → `BUILD SUCCESS`
+
 - [ ] **T-700** Cabeceras de respuesta y CORS con allowlist explícita
 - [ ] **T-701** Logging estructurado JSON con redacción de PII y secretos
   - Verificación: ningún log contiene identificadores fiscales, tokens ni payloads completos

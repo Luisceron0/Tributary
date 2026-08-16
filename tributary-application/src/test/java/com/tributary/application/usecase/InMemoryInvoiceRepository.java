@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * A test double for {@link InvoiceRepository}. A real, PostgreSQL-backed implementation is
@@ -17,6 +18,7 @@ import java.util.Optional;
 final class InMemoryInvoiceRepository implements InvoiceRepository {
 
   private final Map<String, Invoice> byBusinessKey = new LinkedHashMap<>();
+  private final Map<String, UUID> idsByBusinessKey = new LinkedHashMap<>();
   private int saveCount = 0;
 
   @Override
@@ -28,7 +30,13 @@ final class InMemoryInvoiceRepository implements InvoiceRepository {
   public synchronized void save(Invoice invoice) {
     Objects.requireNonNull(invoice, "invoice must not be null");
     byBusinessKey.put(invoice.businessKey(), invoice);
+    idsByBusinessKey.computeIfAbsent(invoice.businessKey(), key -> UUID.randomUUID());
     saveCount++;
+  }
+
+  @Override
+  public synchronized Optional<UUID> findIdByBusinessKey(String businessKey) {
+    return Optional.ofNullable(idsByBusinessKey.get(businessKey));
   }
 
   @Override

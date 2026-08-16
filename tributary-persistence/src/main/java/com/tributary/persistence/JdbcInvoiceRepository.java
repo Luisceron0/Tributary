@@ -41,6 +41,15 @@ public final class JdbcInvoiceRepository implements InvoiceRepository, Retention
   }
 
   @Override
+  public Optional<UUID> findIdByBusinessKey(String businessKey) {
+    Objects.requireNonNull(businessKey, "businessKey must not be null");
+    return jdbc.sql("SELECT id FROM invoice WHERE business_key = ?")
+        .param(businessKey)
+        .query((rs, rowNum) -> (UUID) rs.getObject("id"))
+        .optional();
+  }
+
+  @Override
   public Optional<Invoice> findByBusinessKey(String businessKey) {
     Objects.requireNonNull(businessKey, "businessKey must not be null");
 
