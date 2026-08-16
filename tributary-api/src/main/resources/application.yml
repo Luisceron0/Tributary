@@ -36,3 +36,9 @@ logging:
       console: ecs
   level:
     root: INFO
+
+# T-707: OpenAPI 3.1 output explicitly (springdoc defaults to 3.0). No Swagger UI (ADR-006).
+springdoc:
+  api-docs:
+    version: openapi_3_1
+    path: /v3/api-docs

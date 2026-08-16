@@ -89,7 +89,18 @@ public class SecurityConfig {
       HostAllowlistFilter hostAllowlistFilter,
       com.tributary.api.web.RequestLoggingFilter requestLoggingFilter,
       ActorCaptureFilter actorCaptureFilter,
-      @Value("${tributary.security.cors-allowed-origins:}") String corsAllowedOrigins) throws Exception {
+      @Value("${tributary.security.cors-allowed-origins:}") String corsAllowedOrigins,
+      @Value("${tributary.openapi.export-enabled:false}") boolean openApiExportEnabled) throws Exception {
+    // T-707: /v3/api-docs is reachable ONLY when this deployment was started specifically to
+    // export the OpenAPI document (scripts/export-openapi.sh sets tributary.openapi.export-enabled).
+    // Default is false, so a real deployment never carries a second public route — ADR-009's
+    // "exactly one unauthenticated route" claim stays literally true outside the export script's
+    // own throwaway, non-networked local run.
+    org.springframework.security.authorization.AuthorizationManager<
+            org.springframework.security.web.access.intercept.RequestAuthorizationContext>
+        apiDocsAccess =
+            (authentication, context) -> new AuthorizationDecision(openApiExportEnabled);
+
     http.csrf(csrf -> csrf.disable()) // stateless bearer-token API: no cookie/session to forge
         .cors(cors -> cors.configurationSource(corsConfigurationSource(corsAllowedOrigins)))
         .headers(
@@ -133,6 +144,8 @@ public class SecurityConfig {
                     .access(hasRole(Roles.AUDITOR))
                     .requestMatchers(HttpMethod.DELETE, "/api/v1/subjects/*/personal-data")
                     .access(hasRole(Roles.ADMIN))
+                    .requestMatchers(HttpMethod.GET, "/v3/api-docs/**")
+                    .access(apiDocsAccess)
                     // SRS 9A / T-009: no route this table doesn't explicitly grant is reachable by
                     // any role — an endpoint added later without an explicit line here fails
                     // closed, not open.

@@ -169,6 +169,15 @@ class RbacAndJwtIntegrationTest {
   }
 
   @Test
+  @DisplayName("T-707: /v3/api-docs is unreachable by default — a second public route would contradict ADR-009's own claim")
+  void openApiDocsAreNotPubliclyReachableByDefault() {
+    ResponseEntity<String> response =
+        restTemplate.exchange(baseUrl("/v3/api-docs"), HttpMethod.GET, new HttpEntity<>(authHeaders(null)), String.class);
+
+    assertThat(response.getStatusCode()).isNotEqualTo(HttpStatus.OK);
+  }
+
+  @Test
   @DisplayName("ADR-009: GET /records/{id}/verification needs no token at all — genuinely public, not merely permissive")
   void recordVerificationEndpointIsPublic() {
     ResponseEntity<String> response =

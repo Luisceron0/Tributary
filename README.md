@@ -150,6 +150,14 @@ fixtures, plus a broad OWASP-Top-Ten ruleset); SCA (`trivy`, blocking on any HIG
 dependency finding); and `gitleaks` against the full commit history (CV-06), independent of the
 pre-commit hook that already covers every diff at commit time.
 
+## API contract
+
+[`docs/openapi.json`](docs/openapi.json) — OpenAPI 3.1, generated from the real controllers with
+`scripts/export-openapi.sh`, never hand-written. All eight endpoints, the bearer-JWT scheme, and
+[ADR-009](docs/adr/ADR-009-public-verification-endpoint.md)'s one unauthenticated route made
+explicit in the contract itself, not just enforced by `SecurityConfig`. Regenerate after any
+controller/DTO change so contract drift shows up as a diff.
+
 ## Dependencies
 
 | Dependency | Purpose | Risk if unavailable |

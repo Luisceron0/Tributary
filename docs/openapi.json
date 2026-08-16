@@ -1,0 +1,482 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "Tributary API",
+        "description": "Multi-regime e-invoicing reference implementation (CO/ES/DE). Not certified under any fiscal regime \u2014 see ADR-005 and the README's scope-limits section. No login endpoint: this is a pure OAuth2 resource server, tokens are issued elsewhere.",
+        "version": "0.1.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:18081",
+            "description": "Generated server url"
+        }
+    ],
+    "security": [
+        {
+            "bearerAuth": []
+        }
+    ],
+    "paths": {
+        "/api/v1/invoices": {
+            "post": {
+                "tags": [
+                    "invoice-controller"
+                ],
+                "operationId": "register",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/InvoiceRequestDto"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/invoices/{businessKey}/issuances": {
+            "post": {
+                "tags": [
+                    "invoice-controller"
+                ],
+                "operationId": "issue",
+                "parameters": [
+                    {
+                        "name": "businessKey",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/invoices/{businessKey}/corrections": {
+            "post": {
+                "tags": [
+                    "invoice-controller"
+                ],
+                "operationId": "correct",
+                "parameters": [
+                    {
+                        "name": "businessKey",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CorrectionRequestDto"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/records/{recordId}/verification": {
+            "get": {
+                "tags": [
+                    "record-controller"
+                ],
+                "operationId": "verify",
+                "parameters": [
+                    {
+                        "name": "recordId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RecordVerificationView"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": []
+            }
+        },
+        "/api/v1/invoices/{businessKey}": {
+            "get": {
+                "tags": [
+                    "invoice-controller"
+                ],
+                "operationId": "get",
+                "parameters": [
+                    {
+                        "name": "businessKey",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/invoices/{businessKey}/renderings/xrechnung": {
+            "get": {
+                "tags": [
+                    "invoice-controller"
+                ],
+                "operationId": "renderXRechnung",
+                "parameters": [
+                    {
+                        "name": "businessKey",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "application/xml": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/chains/{chainId}/verification": {
+            "get": {
+                "tags": [
+                    "chain-controller"
+                ],
+                "operationId": "verify_1",
+                "parameters": [
+                    {
+                        "name": "chainId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/subjects/{subjectId}/personal-data": {
+            "delete": {
+                "tags": [
+                    "personal-data-controller"
+                ],
+                "operationId": "suppress",
+                "parameters": [
+                    {
+                        "name": "subjectId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PersonalDataSuppressionRequestDto"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "BuyerDto": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "taxIdentifier": {
+                        "type": "string"
+                    },
+                    "countryCode": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "address": {
+                        "type": "string"
+                    },
+                    "email": {
+                        "type": "string"
+                    },
+                    "phone": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "countryCode",
+                    "name"
+                ]
+            },
+            "InvoiceLineDto": {
+                "type": "object",
+                "properties": {
+                    "lineIdentifier": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "itemName": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "quantity": {
+                        "type": "number"
+                    },
+                    "unitCode": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "unitPrice": {
+                        "type": "number"
+                    },
+                    "lineDiscount": {
+                        "type": "number"
+                    },
+                    "taxCategory": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "taxRate": {
+                        "type": "number"
+                    },
+                    "vatExemptionReason": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "itemName",
+                    "lineIdentifier",
+                    "quantity",
+                    "taxCategory",
+                    "taxRate",
+                    "unitCode",
+                    "unitPrice"
+                ]
+            },
+            "InvoiceRequestDto": {
+                "type": "object",
+                "properties": {
+                    "saleId": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "issuer": {
+                        "$ref": "#/components/schemas/IssuerDto"
+                    },
+                    "buyer": {
+                        "$ref": "#/components/schemas/BuyerDto"
+                    },
+                    "currency": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "issueDate": {
+                        "type": "string",
+                        "format": "date"
+                    },
+                    "lines": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/InvoiceLineDto"
+                        }
+                    },
+                    "documentLevelAllowance": {
+                        "type": "number"
+                    }
+                },
+                "required": [
+                    "buyer",
+                    "currency",
+                    "issueDate",
+                    "issuer",
+                    "lines",
+                    "saleId"
+                ]
+            },
+            "IssuerDto": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "taxIdentifier": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "countryCode": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                },
+                "required": [
+                    "countryCode",
+                    "name",
+                    "taxIdentifier"
+                ]
+            },
+            "CorrectionRequestDto": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                },
+                "required": [
+                    "reason"
+                ]
+            },
+            "RecordVerificationView": {
+                "type": "object",
+                "properties": {
+                    "recordId": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "hash": {
+                        "type": "string"
+                    },
+                    "previousHash": {
+                        "type": "string"
+                    },
+                    "chainPosition": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "issuedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "nonSubmittedNotice": {
+                        "type": "string"
+                    }
+                }
+            },
+            "PersonalDataSuppressionRequestDto": {
+                "type": "object",
+                "properties": {
+                    "justification": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                },
+                "required": [
+                    "justification"
+                ]
+            }
+        },
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            }
+        }
+    }
+}
