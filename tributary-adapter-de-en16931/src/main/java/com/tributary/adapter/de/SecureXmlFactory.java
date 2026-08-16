@@ -58,6 +58,12 @@ public final class SecureXmlFactory {
   public static DocumentBuilder newDocumentBuilder() {
     DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
     try {
+      // CII/XRechnung documents are heavily namespaced (rsm/ram/qdt/udt) — without this, every
+      // parsed element's getLocalName()/getNamespaceURI() come back null and
+      // getElementsByTagNameNS(...) silently matches nothing, regardless of how well-formed or
+      // safe the document is. Not itself a security control, but every caller of parse() that
+      // needs to actually navigate a real EN 16931 document depends on it being on.
+      factory.setNamespaceAware(true);
       // Primary defense: no DOCTYPE means no entity declarations at all, external or internal.
       factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
       // Defense in depth: JAXP's own resource-exhaustion limits and accessExternalDTD/-Schema

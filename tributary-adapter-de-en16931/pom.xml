@@ -15,11 +15,29 @@
   <name>Tributary :: Adapter DE (XRechnung)</name>
   <description>CII / XRechnung serialisation and conformance validation.</description>
 
+  <properties>
+    <!-- SRS 6.2 names JAXB as this module's technology. javax.xml.bind was removed from the JDK
+         after 11, so this is the modern Jakarta EE 10 namespace/artifact, not the legacy one. -->
+    <jakarta.xml.bind.version>4.0.2</jakarta.xml.bind.version>
+    <jaxb.runtime.version>4.0.6</jaxb.runtime.version>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>com.tributary</groupId>
       <artifactId>tributary-application</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.xml.bind</groupId>
+      <artifactId>jakarta.xml.bind-api</artifactId>
+      <version>${jakarta.xml.bind.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.glassfish.jaxb</groupId>
+      <artifactId>jaxb-runtime</artifactId>
+      <version>${jaxb.runtime.version}</version>
+      <scope>runtime</scope>
     </dependency>
   </dependencies>
 
