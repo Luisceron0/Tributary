@@ -1,0 +1,21 @@
+# Every value that varies by environment comes from an env var, never a literal default baked in
+# here for anything credential-shaped (SRS 5.3 / .github/copilot-instructions.md's "Secrets"
+# section) — spring.datasource.* and tributary.security.jwt.public-key have NO default: a missing
+# one fails the app at startup, not with a silently-empty value.
+
+spring:
+  application:
+    name: tributary-api
+
+tributary:
+  regime: ${TRIBUTARY_REGIME:ES}
+  datasource:
+    url: ${TRIBUTARY_DB_URL}
+    username: ${TRIBUTARY_DB_USERNAME}
+    password: ${TRIBUTARY_DB_PASSWORD}
+  security:
+    jwt:
+      public-key: ${TRIBUTARY_JWT_PUBLIC_KEY}
+
+server:
+  port: ${TRIBUTARY_SERVER_PORT:8080}

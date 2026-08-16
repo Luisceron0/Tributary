@@ -243,9 +243,9 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ---
 
-## Fase 4 — Adaptador ES / Verifactu (día 4) · paralelizable con fase 3 · **T-400–403 completas (2026-08-15), T-404 parcial, T-405 bloqueada**
+## Fase 4 — Adaptador ES / Verifactu (día 4) · paralelizable con fase 3 · **T-400–T-405 completas (2026-08-16)**
 
-`mvn test` desde la raíz: `124/124` verde. T-400/401/402/403 completas y verificadas con la misma disciplina de falsabilidad que fases 1–2. T-404 tiene su capa de aplicación lista; su capa HTTP y toda T-405 dependen de que `tributary-api` tenga un servidor REST real, que es literalmente la tarea de fase 7 — no se adelantó esa infraestructura para no violar la regla de "no agregues infraestructura que ninguna tarea pida todavía" en sentido inverso.
+T-400/401/402/403 completas desde el 2026-08-15 (evidencia original: `124/124` verde en ese momento), verificadas con la misma disciplina de falsabilidad que fases 1–2. T-404/T-405 quedaron correctamente bloqueadas hasta que `tributary-api` tuviera un servidor REST real — no se adelantó esa infraestructura antes de que una tarea la pidiera. Cerradas el 2026-08-16 cuando la fase 7 construyó esa capa HTTP; ver sus entradas abajo para la evidencia final.
 
 - [x] **T-400** Canonicalización de campos del registro de alta según RD 1007/2023
   - Verificación: la huella es reproducible desde los datos persistidos
@@ -268,16 +268,14 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - **CV-12 se aplica en dos capas, no solo en el test:** el generador **rechaza en tiempo de ejecución** cualquier `verifierBaseUrl` que contenga un host conocido de la AEAT (`IllegalArgumentException`), no solo se confía en que el test lo detecte después. La garantía vive en el código, no únicamente en la suite que lo vigila
   - `decodedPngMatchesContentAndCarriesNoAeatHost` decodifica el PNG generado con un lector QR real (ZXing `MultiFormatReader`) y revisa el contenido decodificado — la forma más fuerte de "no hay host de la AEAT en el QR": sobre la imagen que un inspector realmente escanearía, no sobre la cadena de origen antes de codificar
   - **Prueba de falsabilidad:** se quitó la lista de rechazo de hosts AEAT. Solo `refusesAnAeatBaseUrl` falló — confirma que ese test y `noAeatHostAnywhereInContent` cubren preocupaciones distintas y complementarias (rechazo activo vs. ausencia accidental), no una duplicada. Revertido
-- [~] **T-404** Endpoint `GET /api/v1/records/{id}/verification` — **parcial, capa HTTP bloqueada hasta fase 7**
+- [x] **T-404** Endpoint `GET /api/v1/records/{id}/verification` — **cerrada (2026-08-16, capa HTTP construida en fase 7)**
   - Verificación: devuelve registro, huella, posición en cadena y declaración de modo no remitido
   - **Resuelto por ADR-009 (SRS v1.1), sin decisión pendiente.** Es la **única ruta pública sin autenticación** de todo el sistema. Cuerpo restringido a `{recordId, hash, previousHash, chainPosition, issuedAt, nonSubmittedNotice}` — sin PII, sin importes, sin identificadores fiscales
-  - Test negativo obligatorio: cualquier campo fuera de esos seis en la respuesta hace fallar el test. Un endpoint público que crece por conveniencia es una fuga de PII con revisión previa aprobada
-  - ⚠️ Ver bloqueante B-02: `docs/SRS-tributary.md` en el árbol de trabajo sigue en v1.0 y no contiene ADR-009 ni la fila de §6.5
-  - **Hecho:** `GetRecordVerificationUseCase` + `RecordVerificationView` en `tributary-application`, armando exactamente los seis campos de ADR-009 a partir de `FiscalRecordPort.findById` (nuevo método en el puerto, implementado en `FiscalRecordRepository`). `Tests run: 3, Failures: 0`. Prueba de falsabilidad (intercambiar `hash`/`previousHash` en el mapeo) detectada por 2 de los 3 tests; revertido
-  - **No hecho, bloqueado a propósito:** el `@RestController` real. §6.2 asigna Spring Boot específicamente a `tributary-api`, y ninguna fase anterior metió ese framework antes de que una tarea lo pidiera — T-404 es la primera que lo pide, y es literalmente la tarea de la fase 7. Traerlo ahora habría sido "agregar infraestructura que ninguna tarea de esta fase pide" en la dirección contraria (adelantarla en vez de omitirla). Queda para fase 7, con la capa de aplicación ya lista para que el controlador sea una envoltura delgada
-- [!] **T-405** Test negativo: no existe ninguna ruta de API que modifique un documento emitido — **bloqueado, no parcialmente ejecutable**
+  - `GetRecordVerificationUseCase` + `RecordVerificationView` (fase 4, `tributary-application`) ya armaban exactamente los seis campos. La pieza que faltaba, `RecordController` (`GET /api/v1/records/{recordId}/verification`), es una envoltura delgada de dos líneas sobre ese caso de uso ya probado
+  - **Verificado en vivo, no solo por revisión de contratos:** `RbacAndJwtIntegrationTest.recordVerificationEndpointIsPublic` confirma que la ruta responde sin ningún token (nunca `401`) — la única excepción explícita en `SecurityConfig`'s `authorizeHttpRequests`, `permitAll()` antes de cualquier otra regla
+- [x] **T-405** Test negativo: no existe ninguna ruta de API que modifique un documento emitido — **cerrada (2026-08-16)**
   - Verificación: barrido de todos los endpoints; ningún `PUT`/`PATCH` sobre facturas o registros
-  - A diferencia de T-404, esta tarea **no tiene versión parcial posible**: su verificación es barrer endpoints HTTP reales, y hoy no existe ninguno. Bloqueada íntegramente hasta que la fase 7 levante `tributary-api` con Spring Boot
+  - `RbacAndJwtIntegrationTest.rc1EndToEndFlow` prueba esto contra un documento REAL ya `ISSUED` (no un hipotético): `PUT`/`PATCH` sobre `/api/v1/invoices/{businessKey}` con un `OPERATOR` real y válido (el mismo rol que legítimamente puede escribir sobre ese mismo recurso por otras rutas) nunca devuelve `200` — ninguno de los dos métodos tiene un `@PutMapping`/`@PatchMapping` registrado en absoluto, así que `SecurityConfig`'s `anyRequest().denyAll()` los bloquea en la capa de autorización, antes de que el despachador de Spring MVC llegue siquiera a buscar un manejador
 
 ---
 
@@ -345,9 +343,9 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
 
 ---
 
-## Fase 6 — Privacidad y auditoría (día 6) · **T-600–T-603 completas (2026-08-16), T-604/605/606 bloqueadas — ver nota**
+## Fase 6 — Privacidad y auditoría (día 6) · **T-600–T-606 completas (2026-08-16)**
 
-**Nota de alcance (2026-08-16):** T-604, T-605 y la mitad "contra la instancia real" de T-606/CV-09 dependen de que `tributary-api` tenga rutas HTTP y Spring Security reales — eso es la fase 7 (§6.2: "tributary-api | Spring Boot 3 | REST, OAuth2, RBAC..."). Construir JWT/RBAC contra una librería elegida a mano ahora arriesgaría ser trabajo desechable en cuanto la configuración real de `JwtDecoder`/Spring Security de la fase 7 reemplace lo que sea que se construyera aquí — no es el mismo tipo de "pieza aislada reutilizable" que T-500-502 fueron para XML. T-600/601/602/603 sí son alcanzables ahora: viven en `tributary-application`/`tributary-persistence`, sin ninguna dependencia de HTTP.
+**Nota de alcance (histórica, 2026-08-16 temprano, resuelta el mismo día):** T-604, T-605 y la mitad "contra la instancia real" de T-606/CV-09 dependían de que `tributary-api` tuviera rutas HTTP y Spring Security reales — eso era la fase 7 (§6.2: "tributary-api | Spring Boot 3 | REST, OAuth2, RBAC..."). Construir JWT/RBAC contra una librería elegida a mano antes de eso habría arriesgado ser trabajo desechable en cuanto la configuración real de `JwtDecoder`/Spring Security de la fase 7 reemplazara lo que fuera que se construyera aquí — no era el mismo tipo de "pieza aislada reutilizable" que T-500-502 fueron para XML. T-600/601/602/603 sí eran alcanzables antes: viven en `tributary-application`/`tributary-persistence`, sin ninguna dependencia de HTTP. La fase 7 se ejecutó el mismo día y cerró las tres tareas restantes — ver su propia sección para la evidencia completa.
 
 - [x] **T-600** `KeyVaultPort` con clave por titular
   - `KeyVaultPort` (aplicación): `getOrCreateKey`/`destroyKey`/`hasKey`, superficie deliberadamente mínima — sin rotación, sin listado, sin exportar la clave en claro más de lo estrictamente necesario
@@ -379,10 +377,10 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - `actor` es un **parámetro** del puerto, no algo que este puerto derive — la extracción real desde un JWT validado es trabajo de fase 7 (T-009). Hasta entonces, cualquier caso de uso que llame a este puerto lo recibe explícito, igual que `IssueInvoiceUseCase` recibe sus dependencias por constructor en vez de leer estado ambiente
   - `mvn test -pl tributary-persistence -Dtest=JdbcAuditEventRepositoryTest` → `Tests run: 3, Failures: 0`
   - **Prueba de falsabilidad:** se intercambiaron los parámetros `actor`/`action` en el `INSERT`. Los tres tests lo detectaron. Revertido, `mvn test -pl tributary-persistence` → `Tests run: 41, Failures: 0`
-- [ ] **T-604** RBAC completo con los tres roles
-- [ ] **T-605** Matriz rol × endpoint — **CV-08**
+- [x] **T-604** RBAC completo con los tres roles — **cerrada en fase 7 (2026-08-16), ver detalle ahí**
+- [x] **T-605** Matriz rol × endpoint — **CV-08** — **cerrada en fase 7 (2026-08-16), ver detalle ahí**
   - Verificación: `OPERATOR` recibe 403 en supresión; `AUDITOR` recibe 403 en emisión
-- [ ] **T-606** Verificación de algoritmo JWT — **CV-09**
+- [x] **T-606** Verificación de algoritmo JWT — **CV-09** — **cerrada en fase 7 (2026-08-16), ver detalle ahí**
   - Verificación: token con `alg: none` y token HS256 firmado con la clave pública → 401 ambos
 
 ---
@@ -402,6 +400,21 @@ Decididos el 2026-08-15. El SRS los invoca como *"los tres casos de prueba defin
   - **Prueba de falsabilidad:** se deshabilitó la comprobación `!result.accepted()`. `regimeRefusalSurfacesAsRegimeRefused` lo detectó. Revertido
 - **`GetInvoiceUseCase`:** envoltorio mínimo sobre `InvoiceRepository.findByBusinessKey` — `{id}` en la tabla de endpoints de la SRS es el `businessKey`, el mismo identificador que ya usa cada caso de uso existente (`IssueInvoiceUseCase.execute(String businessKey)`, etc.), no un UUID de persistencia
 - `mvn test` completo del repo → `BUILD SUCCESS`
+
+**La capa REST real (2026-08-16) — cierra T-404, T-405, T-604, T-605, T-606 de un solo golpe, porque las cinco dependían de la misma pieza de infraestructura:**
+
+- **Spring Boot 3.5.3 entra en `tributary-api` por primera vez**, exactamente como §6.2 lo fija para este módulo y ningún otro. BOM `spring-boot-dependencies` importado en `dependencyManagement` del propio módulo, no en el padre del reactor — el resto de los módulos no lo necesitan y sus propias versiones fijadas quedan intactas
+- **`SecurityConfig`**: OAuth2 resource server puro — **sin endpoint de login/emisión de tokens**, a propósito: la tabla de endpoints de la SRS nunca lista uno, así que este servicio valida tokens emitidos en otro lugar (el patrón estándar resource-server/authorization-server separados), no los emite
+  - `JwtDecoder` construido con `NimbusJwtDecoder.withPublicKey(...).signatureAlgorithm(RS256)` — el algoritmo real es asimétrico a propósito: el escenario de ataque de CV-09 (HS256 firmado con la clave pública) solo tiene sentido si el sistema real usa un algoritmo asimétrico normalmente
+  - RBAC por ruta con un `AuthorizationManager` a medida (`hasRole`/`hasAnyRole`) en vez de las expresiones `hasRole()` de Spring Security — el claim `role` del JWT es un único valor, no una colección tipo *scope*, así que el `JwtGrantedAuthoritiesConverter` incorporado (pensado para claims multivaluados) no encaja
+  - `anyRequest().denyAll()` como última regla — cualquier ruta futura sin una línea explícita aquí falla cerrada, no abierta
+- **Ocho controladores** (`InvoiceController`, `ChainController`, `RecordController`, `PersonalDataController`) sobre los casos de uso ya construidos. `ChainController` usa `ChainVerifier`/`VerifactuHasher` directamente (sin puerto nuevo de aplicación): viven en `tributary-api`, el único módulo que ya ve adaptadores y persistencia a la vez (acuerdo A-2), y ambas clases ya son de solo lectura y de propósito único — envolverlas en un puerto nuevo habría sido indirección sin lógica de caso de uso que la justifique
+- **`GET /api/v1/chains/{chainId}/verification` devuelve `404` para una cadena con cero registros**, no un `INTACT` vacío — `ChainVerifier` no puede distinguir "vacía" de "id desconocido" (no existe un registro separado de cadenas), así que `404` es la respuesta honesta
+- **Verificado de punta a punta, no por capas aisladas:** `RbacAndJwtIntegrationTest` (`@SpringBootTest` + Testcontainers real, sin mocks de seguridad) — 7 tests: sin token → `401`; **CV-08 literal** (`OPERATOR` intenta suprimir PII → `403`; `AUDITOR` intenta emitir → `403`); **CV-09 literal**, las dos mitades (token `alg:none` construido a mano byte a byte, no vía librería → `401`; token HS256 firmado con los bytes crudos de la clave pública RSA, el ataque clásico de confusión de algoritmo → `401`); `GET /records/{id}/verification` sin token nunca da `401` (ADR-009 real); **flujo RC-1 completo**: `OPERATOR` registra y emite, `AUDITOR` lee y (dentro del mismo test) confirma que `PUT`/`PATCH` sobre ese documento ya `ISSUED` nunca dan `200` — T-405, contra un documento real, no uno hipotético
+- **Bug real encontrado por el primer test de extremo a extremo, no una sonda — ver L-024:** el flujo RC-1 devolvía `403` en el paso de emisión con un `OPERATOR` real y válido. Instrumentar el propio `AuthorizationManager` con impresión de depuración probó, sin ambigüedad, que la autorización SÍ concedía acceso (`granted=true`) — la causa real era `@PathVariable String businessKey` sin nombre explícito, ilegible en tiempo de petición porque Maven no conserva nombres de parámetro por defecto (falta el flag `-parameters`, algo que Spring Initializr activa por defecto pero un `pom.xml` a mano no hereda). La excepción se manifestaba como `403` en vez de `500`, apuntando directamente a la capa equivocada. Corregido activando `-parameters` en el `maven-compiler-plugin` de `tributary-api` únicamente (el único módulo con *binding* de parámetros por reflexión)
+- **Segundo hallazgo real, en la propia configuración del reactor:** importar el BOM de Spring Boot resucitó el conflicto de Testcontainers que L-016 ya había resuelto en fase 2 (ver L-023) — el BOM trae su propia versión gestionada (`1.21.2`) que ganaba sobre la `1.21.4` ya fijada explícitamente en este módulo. Corregido con entradas explícitas de `dependencyManagement` después del `import` del BOM
+- **Prueba de falsabilidad decisiva:** se cambió el nombre del claim que `jwtAuthenticationConverter` lee de `"role"` a `"wrong_claim_name"`. El flujo RC-1 completo falló de inmediato (el token `OPERATOR` deja de tener ninguna autoridad). Revertido. (Una sonda anterior — quitar `.signatureAlgorithm(RS256)` explícito del `JwtDecoder` — **no detectó nada**: `NimbusJwtDecoder.withPublicKey(...)` ya usa RS256 por defecto sin necesidad de fijarlo, mismo patrón de L-021/L-015 — descartada como sonda no discriminante, dejada fuera de la evidencia final)
+- `mvn test` completo del repo → `BUILD SUCCESS`, sin regresiones en ninguno de los 8 módulos
 
 - [ ] **T-700** Cabeceras de respuesta y CORS con allowlist explícita
 - [ ] **T-701** Logging estructurado JSON con redacción de PII y secretos
