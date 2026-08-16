@@ -17,7 +17,8 @@
 
   <properties>
     <!-- SRS 5.3: versions are pinned, never ranges. -->
-    <postgresql.version>42.7.7</postgresql.version>
+    <!-- T-704/SCA (trivy): 42.7.7 carries CVE-2026-42198 and CVE-2026-54291, fixed in 42.7.12. -->
+    <postgresql.version>42.7.12</postgresql.version>
     <!--
       "Spring Data" per SRS 6.2 means this module's data-access layer, not the Spring Boot
       application framework — that is tributary-api's tech explicitly (its own row in the same
@@ -25,11 +26,19 @@
       which fits a schema where PostgreSQL triggers are the authority (ADR-002): explicit SQL, no
       ORM mapping between the trigger-verified rows and a Java entity graph.
     -->
-    <spring-jdbc.version>6.2.8</spring-jdbc.version>
+    <!-- T-704/SCA (trivy): 6.2.8 carries CVE-2025-41249, fixed in 6.2.11. -->
+    <spring-jdbc.version>6.2.19</spring-jdbc.version>
     <hikaricp.version>6.3.0</hikaricp.version>
     <flyway.version>11.8.2</flyway.version>
     <testcontainers.version>1.21.4</testcontainers.version>
     <slf4j.version>2.0.17</slf4j.version>
+    <!--
+      T-704/SCA (trivy): this module pulls jackson-databind transitively at a stale 2.15.2
+      (nothing here imports the Spring Boot BOM that tributary-api uses — see L-023) — carries
+      GHSA-r7wm-3cxj-wff9, CVE-2026-54512, CVE-2026-54513, all fixed by 2.18.8+. Pinned explicitly
+      at distance 1, same reasoning as the slf4j pin below.
+    -->
+    <jackson.version>2.21.4</jackson.version>
   </properties>
 
   <dependencies>
@@ -76,6 +85,16 @@
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-database-postgresql</artifactId>
       <version>${flyway.version}</version>
+    </dependency>
+    <!--
+      Pinned explicitly at distance 1 (same reasoning as the slf4j pin above) so Maven's
+      nearest-wins mediation picks this version instead of flyway-core's own transitive
+      jackson-databind:2.15.2 — see the jackson.version comment in <properties> for the CVEs.
+    -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
     </dependency>
 
     <dependency>
