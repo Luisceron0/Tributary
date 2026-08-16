@@ -5,6 +5,8 @@ import com.tributary.domain.Invoice;
 import com.tributary.domain.InvoiceLine;
 import com.tributary.domain.Issuer;
 import com.tributary.domain.Money;
+import com.tributary.domain.TaxCategory;
+import com.tributary.domain.TaxRate;
 import com.tributary.domain.VatBreakdown;
 import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.JAXBException;
@@ -16,6 +18,7 @@ import jakarta.xml.bind.annotation.XmlElement;
 import jakarta.xml.bind.annotation.XmlRootElement;
 import jakarta.xml.bind.annotation.XmlType;
 import java.io.StringWriter;
+import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,17 +28,20 @@ import java.util.Set;
  * T-503: Invoice (EN 16931) -&gt; CII/XRechnung XML, via JAXB (SRS 6.2's stated technology for
  * this module). Element names, namespaces and ordering were confirmed against real, independently
  * KoSIT-validated reference instances from {@code itplr-kosit/xrechnung-testsuite} fetched this
- * session — the header-level {@code ApplicableTradeTax} sequence in particular (CalculatedAmount,
- * TypeCode, ExemptionReason, BasisAmount, CategoryCode, RateApplicablePercent) comes from a real
- * exempt-category sample, not a guess. No reference sample in that suite exercises a line-level
- * {@code ExemptionReason}; that placement is this mapper's best-effort ordering, to be confirmed
- * or corrected against the real KoSIT validator in T-505 — the same empirical-iteration approach
- * that worked for the Factus payload shape in T-303/T-307.
+ * session, then iterated against the real KoSIT validator itself (T-505) until all three reference
+ * cases were genuinely accepted — not assumed from the standard's prose, and not declared done
+ * until the real tool agreed.
  *
- * <p>Fields the domain does not model — payment means/terms, buyer reference — are omitted
- * entirely rather than sent empty; every reference sample confirms these are optional (minOccurs
- * 0) in the real schema, matching {@code FactusPayloadMapper}'s "the domain models no payment
- * method" scope decision (T-303) applied here too.
+ * <p>Several elements the real XRechnung 3.0.2 Schematron ruleset requires have no domain
+ * equivalent at all (SRS 3 never asked for a street address, a contact person, a buyer-routing
+ * reference, or payment terms) — this mapper defaults them, each documented at the point it is
+ * set, using the SAME placeholder convention KoSIT's own official reference instances use for
+ * fields their own test data can't supply (bracketed text like {@code "[Seller city]"}, or the
+ * literal German {@code "nicht vorhanden"} — "not available" — for a contact person KoSIT's own
+ * samples use verbatim). This is a scope simplification, declared the same way {@code
+ * FactusPayloadMapper} declared its own (T-303), not an oversight: extending {@code Issuer}/{@code
+ * Buyer} to model a street address is out of scope for what RC-1/2/3 need (see {@code
+ * tasks/todo.md}'s explicit warning against widening the domain beyond the three reference cases).
  */
 public final class CiiInvoiceMapper {
 
@@ -43,11 +49,15 @@ public final class CiiInvoiceMapper {
   static final String RAM_NS = "urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100";
   static final String UDT_NS = "urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100";
 
+  private static final String BUSINESS_PROCESS_ID = "urn:fdc:peppol.eu:2017:poacc:billing:01:1.0";
   private static final String XRECHNUNG_GUIDELINE_ID =
       "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0";
   private static final String INVOICE_TYPE_CODE = "380"; // commercial invoice
   private static final String VAT_TYPE_CODE = "VAT";
   private static final String VAT_SCHEME_ID = "VA";
+  private static final String ELECTRONIC_ADDRESS_SCHEME_ID = "EM"; // electronic mail
+  private static final String PAYMENT_MEANS_TYPE_CODE_UNSPECIFIED = "1"; // UNCL4461: instrument not defined
+  private static final String PAYMENT_TERMS_DESCRIPTION = "Zahlbar sofort ohne Abzug."; // matches the official sample
   private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
 
   /**
@@ -98,7 +108,13 @@ public final class CiiInvoiceMapper {
 
   private ExchangedDocumentContext exchangedDocumentContext() {
     ExchangedDocumentContext context = new ExchangedDocumentContext();
-    context.guidelineSpecifiedDocumentContextParameter = new GuidelineSpecifiedDocumentContextParameter();
+    // Required by the real XRechnung Schematron ruleset (PEPPOL-EN16931-R001) — confirmed live
+    // against the KoSIT validator (T-505); the domain has no concept of a "business process", so
+    // this uses the same standard PEPPOL billing process URN every real sample fetched this
+    // session declares.
+    context.businessProcessSpecifiedDocumentContextParameter = new DocumentContextParameter();
+    context.businessProcessSpecifiedDocumentContextParameter.id = BUSINESS_PROCESS_ID;
+    context.guidelineSpecifiedDocumentContextParameter = new DocumentContextParameter();
     context.guidelineSpecifiedDocumentContextParameter.id = XRECHNUNG_GUIDELINE_ID;
     return context;
   }
@@ -108,10 +124,15 @@ public final class CiiInvoiceMapper {
     document.id = invoice.businessKey();
     document.typeCode = INVOICE_TYPE_CODE;
     document.issueDateTime = new IssueDateTime();
-    document.issueDateTime.dateTimeString = new DateTimeString();
-    document.issueDateTime.dateTimeString.format = "102";
-    document.issueDateTime.dateTimeString.value = invoice.issueDate().format(DATE_FORMAT);
+    document.issueDateTime.dateTimeString = dateTimeString(invoice.issueDate().format(DATE_FORMAT));
     return document;
+  }
+
+  private DateTimeString dateTimeString(String yyyyMMdd) {
+    DateTimeString dateTimeString = new DateTimeString();
+    dateTimeString.format = "102";
+    dateTimeString.value = yyyyMMdd;
+    return dateTimeString;
   }
 
   private SupplyChainTradeTransaction supplyChainTradeTransaction(Invoice invoice) {
@@ -121,7 +142,17 @@ public final class CiiInvoiceMapper {
       transaction.lineItems.add(lineItem(line));
     }
     transaction.applicableHeaderTradeAgreement = headerTradeAgreement(invoice);
+
+    // BR-DE-TMP-32 / PEPPOL-EN16931-R008 (confirmed live, T-505): the delivery element must carry
+    // an actual delivery date, not be empty — the domain has no delivery-date concept distinct
+    // from the invoice's own issue date, so this reuses it rather than fabricating a new one.
     transaction.applicableHeaderTradeDelivery = new ApplicableHeaderTradeDelivery();
+    transaction.applicableHeaderTradeDelivery.actualDeliverySupplyChainEvent = new ActualDeliverySupplyChainEvent();
+    transaction.applicableHeaderTradeDelivery.actualDeliverySupplyChainEvent.occurrenceDateTime =
+        new OccurrenceDateTime();
+    transaction.applicableHeaderTradeDelivery.actualDeliverySupplyChainEvent.occurrenceDateTime.dateTimeString =
+        dateTimeString(invoice.issueDate().format(DATE_FORMAT));
+
     transaction.applicableHeaderTradeSettlement = headerTradeSettlement(invoice);
     return transaction;
   }
@@ -136,9 +167,35 @@ public final class CiiInvoiceMapper {
     item.specifiedTradeProduct.name = line.itemName();
 
     item.specifiedLineTradeAgreement = new SpecifiedLineTradeAgreement();
-    item.specifiedLineTradeAgreement.netPriceProductTradePrice = new NetPriceProductTradePrice();
-    item.specifiedLineTradeAgreement.netPriceProductTradePrice.chargeAmount =
-        line.unitPrice().amount().toPlainString();
+    if (line.lineDiscount().isZero()) {
+      item.specifiedLineTradeAgreement.netPriceProductTradePrice = new NetPriceProductTradePrice();
+      item.specifiedLineTradeAgreement.netPriceProductTradePrice.chargeAmount =
+          line.unitPrice().amount().toPlainString();
+    } else {
+      // PEPPOL-EN16931-R120 (confirmed live, T-505): LineTotalAmount must reconcile against
+      // quantity * unit price adjusted by an EXPLICIT per-unit allowance — the domain's
+      // lineDiscount is a total, not per-unit, amount (see netAmount()'s own formula), so it is
+      // divided by quantity here purely for this per-unit CII field; the line's own total
+      // (already correctly discounted) still comes from netAmount(), never recomputed from this.
+      BigDecimal perUnitDiscount =
+          line.lineDiscount().amount().divide(line.quantity().value(), 4, Money.ROUNDING);
+      item.specifiedLineTradeAgreement.grossPriceProductTradePrice = new GrossPriceProductTradePrice();
+      item.specifiedLineTradeAgreement.grossPriceProductTradePrice.chargeAmount =
+          line.unitPrice().amount().toPlainString();
+      item.specifiedLineTradeAgreement.grossPriceProductTradePrice.appliedTradeAllowanceCharge =
+          new AppliedTradeAllowanceCharge();
+      item.specifiedLineTradeAgreement.grossPriceProductTradePrice.appliedTradeAllowanceCharge.chargeIndicator =
+          new ChargeIndicator();
+      item.specifiedLineTradeAgreement.grossPriceProductTradePrice.appliedTradeAllowanceCharge.chargeIndicator
+              .indicator =
+          "false";
+      item.specifiedLineTradeAgreement.grossPriceProductTradePrice.appliedTradeAllowanceCharge.actualAmount =
+          perUnitDiscount.toPlainString();
+
+      item.specifiedLineTradeAgreement.netPriceProductTradePrice = new NetPriceProductTradePrice();
+      item.specifiedLineTradeAgreement.netPriceProductTradePrice.chargeAmount =
+          line.unitPrice().amount().subtract(perUnitDiscount).toPlainString();
+    }
 
     item.specifiedLineTradeDelivery = new SpecifiedLineTradeDelivery();
     item.specifiedLineTradeDelivery.billedQuantity = new BilledQuantity();
@@ -163,6 +220,10 @@ public final class CiiInvoiceMapper {
 
   private ApplicableHeaderTradeAgreement headerTradeAgreement(Invoice invoice) {
     ApplicableHeaderTradeAgreement agreement = new ApplicableHeaderTradeAgreement();
+    // BR-DE-15 (confirmed live, T-505): mandatory buyer-routing reference. The domain's closest
+    // existing concept is its own businessKey (ADR-003) — not an EN 16931 term, but the only
+    // per-invoice identifier available without inventing a new domain field for this alone.
+    agreement.buyerReference = invoice.businessKey();
     agreement.sellerTradeParty = sellerParty(invoice.issuer());
     agreement.buyerTradeParty = buyerParty(invoice.buyer());
     return agreement;
@@ -171,8 +232,12 @@ public final class CiiInvoiceMapper {
   private TradeParty sellerParty(Issuer issuer) {
     TradeParty party = new TradeParty();
     party.name = issuer.name();
-    party.postalTradeAddress = new PostalTradeAddress();
-    party.postalTradeAddress.countryId = issuer.countryCode();
+    // BR-DE-2 (confirmed live, T-505): mandatory seller contact (BG-6). The domain models no
+    // contact person — "nicht vorhanden" ("not available") is KoSIT's own official reference
+    // instances' literal convention for this exact gap, adopted verbatim rather than invented.
+    party.definedTradeContact = placeholderContact();
+    party.postalTradeAddress = placeholderAddress(issuer.countryCode(), "Seller");
+    party.uriUniversalCommunication = placeholderElectronicAddress("seller");
     party.specifiedTaxRegistration = taxRegistration(issuer.taxIdentifier());
     return party;
   }
@@ -180,10 +245,47 @@ public final class CiiInvoiceMapper {
   private TradeParty buyerParty(Buyer buyer) {
     TradeParty party = new TradeParty();
     party.name = buyer.name();
-    party.postalTradeAddress = new PostalTradeAddress();
-    party.postalTradeAddress.countryId = buyer.countryCode();
+    party.postalTradeAddress = placeholderAddress(buyer.countryCode(), "Buyer");
+    party.uriUniversalCommunication = placeholderElectronicAddress("buyer");
     party.specifiedTaxRegistration = buyer.taxIdentifier().map(this::taxRegistration).orElse(null);
     return party;
+  }
+
+  private DefinedTradeContact placeholderContact() {
+    // BR-DE-27/BR-DE-28/BR-DE-7 (confirmed live, T-505): a placeholder phone needs real digits
+    // (BR-DE-27 requires at least three) and a placeholder email needs to actually look like one
+    // (exactly one '@', at least two characters either side) — a purely bracketed "[not modelled]"
+    // string satisfies BR-DE-2's "the group is present" but fails these format-level rules.
+    DefinedTradeContact contact = new DefinedTradeContact();
+    contact.personName = "nicht vorhanden";
+    contact.telephoneUniversalCommunication = new TelephoneUniversalCommunication();
+    contact.telephoneUniversalCommunication.completeNumber = "+00 000 0000000";
+    contact.emailUriUniversalCommunication = new EmailUriUniversalCommunication();
+    contact.emailUriUniversalCommunication.uriId = "seller-contact@example.invalid";
+    return contact;
+  }
+
+  private PostalTradeAddress placeholderAddress(String countryCode, String label) {
+    PostalTradeAddress address = new PostalTradeAddress();
+    // BR-DE-3/4/8/9 (confirmed live, T-505): street/city/postcode have no domain equivalent (SRS
+    // 3 — Issuer/Buyer model only name, VAT id and country). Bracketed placeholders, exactly the
+    // convention the official KoSIT reference instances use for the same gap.
+    address.postcodeCode = "[" + label + " postal code]";
+    address.lineOne = "[" + label + " address line 1]";
+    address.cityName = "[" + label + " city]";
+    address.countryId = countryCode;
+    return address;
+  }
+
+  private UriUniversalCommunication placeholderElectronicAddress(String label) {
+    // BT-34/BT-49, PEPPOL-EN16931-R010/R020 (confirmed live, T-505): mandatory e-invoicing
+    // routing address, no domain equivalent. example.invalid is RFC 2606's reserved-for-
+    // documentation domain, deliberately not a real address.
+    UriUniversalCommunication uri = new UriUniversalCommunication();
+    uri.uriId = new SchemedId();
+    uri.uriId.schemeId = ELECTRONIC_ADDRESS_SCHEME_ID;
+    uri.uriId.value = label + "@example.invalid";
+    return uri;
   }
 
   private SpecifiedTaxRegistration taxRegistration(String vatId) {
@@ -198,7 +300,15 @@ public final class CiiInvoiceMapper {
     ApplicableHeaderTradeSettlement settlement = new ApplicableHeaderTradeSettlement();
     settlement.invoiceCurrencyCode = invoice.currency().getCurrencyCode();
 
+    // BR-DE-1 (confirmed live, T-505): mandatory payment means (BG-16). The domain models no
+    // payment method (same scope decision as FactusPayloadMapper's payment_details, T-303) — "1"
+    // is UNCL4461's own code for "instrument not defined", an honest explicit non-answer rather
+    // than a fabricated bank account.
+    settlement.specifiedTradeSettlementPaymentMeans = new SpecifiedTradeSettlementPaymentMeans();
+    settlement.specifiedTradeSettlementPaymentMeans.typeCode = PAYMENT_MEANS_TYPE_CODE_UNSPECIFIED;
+
     settlement.applicableTradeTax = new ArrayList<>();
+    settlement.specifiedTradeAllowanceCharge = new ArrayList<>();
     for (VatBreakdown breakdown : invoice.totals().vatBreakdown()) {
       HeaderApplicableTradeTax tax = new HeaderApplicableTradeTax();
       tax.calculatedAmount = breakdown.taxAmount().amount().toPlainString();
@@ -208,11 +318,43 @@ public final class CiiInvoiceMapper {
       tax.categoryCode = breakdown.category().code();
       tax.rateApplicablePercent = breakdown.rate().percentage().toPlainString();
       settlement.applicableTradeTax.add(tax);
+
+      // BR-S-08/BR-CO-13 (confirmed live, T-505 — RC-2 specifically): a document-level allowance
+      // (BT-107) apportioned across VAT groups (T-101's own algorithm) must be reported per group
+      // as its own BG-20 allowance, or the Schematron cross-check between BT-116 (this group's
+      // taxable amount, already net of its share) and the raw line total for that rate fails —
+      // it has no other way to see where the difference went. Recomputes this group's raw net
+      // total the same way InvoiceTotals.compute() groups lines, then derives the apportioned
+      // share as (raw net) - (already-computed taxable amount) rather than reimplementing T-101's
+      // proportional-with-residual algorithm a second time.
+      Money groupRawNet =
+          Money.sum(
+              invoice.currency(),
+              invoice.lines().stream()
+                  .filter(l -> l.taxCategory() == breakdown.category() && l.taxRate().equals(breakdown.rate()))
+                  .map(InvoiceLine::netAmount)
+                  .toList());
+      Money groupAllowance = groupRawNet.minus(breakdown.taxableAmount());
+      if (!groupAllowance.isZero()) {
+        settlement.specifiedTradeAllowanceCharge.add(allowanceCharge(groupAllowance, breakdown.category(), breakdown.rate()));
+      }
+    }
+
+    // BR-DE-15's sibling for terms (BR-CO-25, confirmed live, T-505): if the amount due is
+    // positive, either a due date or payment terms must be present. The domain tracks neither a
+    // due date nor terms text — reuses the exact wording the official KoSIT sample uses for the
+    // same "paid immediately, no terms" default.
+    if (!invoice.totals().amountDueForPayment().isZero()) {
+      settlement.specifiedTradePaymentTerms = new SpecifiedTradePaymentTerms();
+      settlement.specifiedTradePaymentTerms.description = PAYMENT_TERMS_DESCRIPTION;
     }
 
     settlement.specifiedTradeSettlementHeaderMonetarySummation = new SpecifiedTradeSettlementHeaderMonetarySummation();
     var summation = settlement.specifiedTradeSettlementHeaderMonetarySummation;
     summation.lineTotalAmount = invoice.totals().sumOfLineNetAmounts().amount().toPlainString();
+    if (!invoice.totals().documentLevelAllowance().isZero()) {
+      summation.allowanceTotalAmount = invoice.totals().documentLevelAllowance().amount().toPlainString();
+    }
     summation.taxBasisTotalAmount = invoice.totals().taxExclusiveAmount().amount().toPlainString();
     summation.taxTotalAmount = new CurrencyAmount();
     summation.taxTotalAmount.currencyId = invoice.currency().getCurrencyCode();
@@ -223,7 +365,21 @@ public final class CiiInvoiceMapper {
     return settlement;
   }
 
-  // ---- JAXB model: element names/namespaces/order confirmed against real reference instances ----
+  private SpecifiedTradeAllowanceCharge allowanceCharge(Money amount, TaxCategory category, TaxRate rate) {
+    SpecifiedTradeAllowanceCharge charge = new SpecifiedTradeAllowanceCharge();
+    charge.chargeIndicator = new ChargeIndicator();
+    charge.chargeIndicator.indicator = "false"; // an allowance, never a charge — BT-107 not BT-108
+    charge.actualAmount = amount.amount().toPlainString();
+    charge.reason = "Rabatt"; // "discount" — the domain carries no allowance reason text (BT-97 out of scope)
+    charge.categoryTradeTax = new AllowanceCategoryTradeTax();
+    charge.categoryTradeTax.typeCode = VAT_TYPE_CODE;
+    charge.categoryTradeTax.categoryCode = category.code();
+    charge.categoryTradeTax.rateApplicablePercent = rate.percentage().toPlainString();
+    return charge;
+  }
+
+  // ---- JAXB model: element names/namespaces/order confirmed against real reference instances,
+  // then against the real KoSIT validator itself (T-505) ----
 
   @XmlRootElement(name = "CrossIndustryInvoice", namespace = RSM_NS)
   @XmlAccessorType(XmlAccessType.FIELD)
@@ -242,13 +398,17 @@ public final class CiiInvoiceMapper {
   }
 
   @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlType(propOrder = {"businessProcessSpecifiedDocumentContextParameter", "guidelineSpecifiedDocumentContextParameter"})
   static final class ExchangedDocumentContext {
+    @XmlElement(name = "BusinessProcessSpecifiedDocumentContextParameter", namespace = RAM_NS)
+    DocumentContextParameter businessProcessSpecifiedDocumentContextParameter;
+
     @XmlElement(name = "GuidelineSpecifiedDocumentContextParameter", namespace = RAM_NS)
-    GuidelineSpecifiedDocumentContextParameter guidelineSpecifiedDocumentContextParameter;
+    DocumentContextParameter guidelineSpecifiedDocumentContextParameter;
   }
 
   @XmlAccessorType(XmlAccessType.FIELD)
-  static final class GuidelineSpecifiedDocumentContextParameter {
+  static final class DocumentContextParameter {
     @XmlElement(name = "ID", namespace = RAM_NS)
     String id;
   }
@@ -342,9 +502,34 @@ public final class CiiInvoiceMapper {
   }
 
   @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlType(propOrder = {"grossPriceProductTradePrice", "netPriceProductTradePrice"})
   static final class SpecifiedLineTradeAgreement {
+    @XmlElement(name = "GrossPriceProductTradePrice", namespace = RAM_NS)
+    GrossPriceProductTradePrice grossPriceProductTradePrice;
+
     @XmlElement(name = "NetPriceProductTradePrice", namespace = RAM_NS)
     NetPriceProductTradePrice netPriceProductTradePrice;
+  }
+
+  /** Order confirmed against a real per-unit line-discount reference instance (01.21a) — see class note. */
+  @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlType(propOrder = {"chargeAmount", "appliedTradeAllowanceCharge"})
+  static final class GrossPriceProductTradePrice {
+    @XmlElement(name = "ChargeAmount", namespace = RAM_NS)
+    String chargeAmount;
+
+    @XmlElement(name = "AppliedTradeAllowanceCharge", namespace = RAM_NS)
+    AppliedTradeAllowanceCharge appliedTradeAllowanceCharge;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlType(propOrder = {"chargeIndicator", "actualAmount"})
+  static final class AppliedTradeAllowanceCharge {
+    @XmlElement(name = "ChargeIndicator", namespace = RAM_NS)
+    ChargeIndicator chargeIndicator;
+
+    @XmlElement(name = "ActualAmount", namespace = RAM_NS)
+    String actualAmount;
   }
 
   @XmlAccessorType(XmlAccessType.FIELD)
@@ -378,7 +563,7 @@ public final class CiiInvoiceMapper {
     SpecifiedTradeSettlementLineMonetarySummation specifiedTradeSettlementLineMonetarySummation;
   }
 
-  /** Line-level order confirmed present in real samples: TypeCode, CategoryCode[, RateApplicablePercent]. ExemptionReason placement is this mapper's best effort — see class note. */
+  /** Order confirmed twice: TypeCode/CategoryCode/RateApplicablePercent against real reference samples, and the ExemptionReason position specifically against the real KoSIT validator via RC-3 (T-505) — no reference sample in the testsuite happened to exercise it at line level. */
   @XmlAccessorType(XmlAccessType.FIELD)
   @XmlType(propOrder = {"typeCode", "exemptionReason", "categoryCode", "rateApplicablePercent"})
   static final class LineApplicableTradeTax {
@@ -402,8 +587,11 @@ public final class CiiInvoiceMapper {
   }
 
   @XmlAccessorType(XmlAccessType.FIELD)
-  @XmlType(propOrder = {"sellerTradeParty", "buyerTradeParty"})
+  @XmlType(propOrder = {"buyerReference", "sellerTradeParty", "buyerTradeParty"})
   static final class ApplicableHeaderTradeAgreement {
+    @XmlElement(name = "BuyerReference", namespace = RAM_NS)
+    String buyerReference;
+
     @XmlElement(name = "SellerTradeParty", namespace = RAM_NS)
     TradeParty sellerTradeParty;
 
@@ -412,20 +600,67 @@ public final class CiiInvoiceMapper {
   }
 
   @XmlAccessorType(XmlAccessType.FIELD)
-  @XmlType(propOrder = {"name", "postalTradeAddress", "specifiedTaxRegistration"})
+  @XmlType(propOrder = {"name", "definedTradeContact", "postalTradeAddress", "uriUniversalCommunication", "specifiedTaxRegistration"})
   static final class TradeParty {
     @XmlElement(name = "Name", namespace = RAM_NS)
     String name;
 
+    @XmlElement(name = "DefinedTradeContact", namespace = RAM_NS)
+    DefinedTradeContact definedTradeContact;
+
     @XmlElement(name = "PostalTradeAddress", namespace = RAM_NS)
     PostalTradeAddress postalTradeAddress;
+
+    @XmlElement(name = "URIUniversalCommunication", namespace = RAM_NS)
+    UriUniversalCommunication uriUniversalCommunication;
 
     @XmlElement(name = "SpecifiedTaxRegistration", namespace = RAM_NS)
     SpecifiedTaxRegistration specifiedTaxRegistration;
   }
 
   @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlType(propOrder = {"personName", "telephoneUniversalCommunication", "emailUriUniversalCommunication"})
+  static final class DefinedTradeContact {
+    @XmlElement(name = "PersonName", namespace = RAM_NS)
+    String personName;
+
+    @XmlElement(name = "TelephoneUniversalCommunication", namespace = RAM_NS)
+    TelephoneUniversalCommunication telephoneUniversalCommunication;
+
+    @XmlElement(name = "EmailURIUniversalCommunication", namespace = RAM_NS)
+    EmailUriUniversalCommunication emailUriUniversalCommunication;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  static final class TelephoneUniversalCommunication {
+    @XmlElement(name = "CompleteNumber", namespace = RAM_NS)
+    String completeNumber;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  static final class EmailUriUniversalCommunication {
+    @XmlElement(name = "URIID", namespace = RAM_NS)
+    String uriId;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  static final class UriUniversalCommunication {
+    @XmlElement(name = "URIID", namespace = RAM_NS)
+    SchemedId uriId;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlType(propOrder = {"postcodeCode", "lineOne", "cityName", "countryId"})
   static final class PostalTradeAddress {
+    @XmlElement(name = "PostcodeCode", namespace = RAM_NS)
+    String postcodeCode;
+
+    @XmlElement(name = "LineOne", namespace = RAM_NS)
+    String lineOne;
+
+    @XmlElement(name = "CityName", namespace = RAM_NS)
+    String cityName;
+
     @XmlElement(name = "CountryID", namespace = RAM_NS)
     String countryId;
   }
@@ -445,22 +680,100 @@ public final class CiiInvoiceMapper {
     String value;
   }
 
-  /** Deliberately empty — the domain models no delivery details; the real schema still requires the element. */
   @XmlAccessorType(XmlAccessType.FIELD)
-  static final class ApplicableHeaderTradeDelivery {}
+  static final class ApplicableHeaderTradeDelivery {
+    @XmlElement(name = "ActualDeliverySupplyChainEvent", namespace = RAM_NS)
+    ActualDeliverySupplyChainEvent actualDeliverySupplyChainEvent;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  static final class ActualDeliverySupplyChainEvent {
+    @XmlElement(name = "OccurrenceDateTime", namespace = RAM_NS)
+    OccurrenceDateTime occurrenceDateTime;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  static final class OccurrenceDateTime {
+    @XmlElement(name = "DateTimeString", namespace = UDT_NS)
+    DateTimeString dateTimeString;
+  }
 
   @XmlAccessorType(XmlAccessType.FIELD)
   @XmlType(
-      propOrder = {"invoiceCurrencyCode", "applicableTradeTax", "specifiedTradeSettlementHeaderMonetarySummation"})
+      propOrder = {
+        "invoiceCurrencyCode",
+        "specifiedTradeSettlementPaymentMeans",
+        "applicableTradeTax",
+        "specifiedTradeAllowanceCharge",
+        "specifiedTradePaymentTerms",
+        "specifiedTradeSettlementHeaderMonetarySummation"
+      })
   static final class ApplicableHeaderTradeSettlement {
     @XmlElement(name = "InvoiceCurrencyCode", namespace = RAM_NS)
     String invoiceCurrencyCode;
 
+    @XmlElement(name = "SpecifiedTradeSettlementPaymentMeans", namespace = RAM_NS)
+    SpecifiedTradeSettlementPaymentMeans specifiedTradeSettlementPaymentMeans;
+
     @XmlElement(name = "ApplicableTradeTax", namespace = RAM_NS)
     List<HeaderApplicableTradeTax> applicableTradeTax;
 
+    @XmlElement(name = "SpecifiedTradeAllowanceCharge", namespace = RAM_NS)
+    List<SpecifiedTradeAllowanceCharge> specifiedTradeAllowanceCharge;
+
+    @XmlElement(name = "SpecifiedTradePaymentTerms", namespace = RAM_NS)
+    SpecifiedTradePaymentTerms specifiedTradePaymentTerms;
+
     @XmlElement(name = "SpecifiedTradeSettlementHeaderMonetarySummation", namespace = RAM_NS)
     SpecifiedTradeSettlementHeaderMonetarySummation specifiedTradeSettlementHeaderMonetarySummation;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  static final class SpecifiedTradeSettlementPaymentMeans {
+    @XmlElement(name = "TypeCode", namespace = RAM_NS)
+    String typeCode;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  static final class SpecifiedTradePaymentTerms {
+    @XmlElement(name = "Description", namespace = RAM_NS)
+    String description;
+  }
+
+  /** Order confirmed against a real document-level-charge reference instance (01.21a) — see class note. */
+  @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlType(propOrder = {"chargeIndicator", "actualAmount", "reason", "categoryTradeTax"})
+  static final class SpecifiedTradeAllowanceCharge {
+    @XmlElement(name = "ChargeIndicator", namespace = RAM_NS)
+    ChargeIndicator chargeIndicator;
+
+    @XmlElement(name = "ActualAmount", namespace = RAM_NS)
+    String actualAmount;
+
+    @XmlElement(name = "Reason", namespace = RAM_NS)
+    String reason;
+
+    @XmlElement(name = "CategoryTradeTax", namespace = RAM_NS)
+    AllowanceCategoryTradeTax categoryTradeTax;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  static final class ChargeIndicator {
+    @XmlElement(name = "Indicator", namespace = UDT_NS)
+    String indicator;
+  }
+
+  @XmlAccessorType(XmlAccessType.FIELD)
+  @XmlType(propOrder = {"typeCode", "categoryCode", "rateApplicablePercent"})
+  static final class AllowanceCategoryTradeTax {
+    @XmlElement(name = "TypeCode", namespace = RAM_NS)
+    String typeCode;
+
+    @XmlElement(name = "CategoryCode", namespace = RAM_NS)
+    String categoryCode;
+
+    @XmlElement(name = "RateApplicablePercent", namespace = RAM_NS)
+    String rateApplicablePercent;
   }
 
   /** Order confirmed against a real exempt-category (O) reference instance — see class note. */
@@ -486,12 +799,23 @@ public final class CiiInvoiceMapper {
     String rateApplicablePercent;
   }
 
+  /** Order per UN/CEFACT CII's TradeSettlementHeaderMonetarySummationType (ChargeTotalAmount omitted — the domain models no document-level charges). */
   @XmlAccessorType(XmlAccessType.FIELD)
   @XmlType(
-      propOrder = {"lineTotalAmount", "taxBasisTotalAmount", "taxTotalAmount", "grandTotalAmount", "duePayableAmount"})
+      propOrder = {
+        "lineTotalAmount",
+        "allowanceTotalAmount",
+        "taxBasisTotalAmount",
+        "taxTotalAmount",
+        "grandTotalAmount",
+        "duePayableAmount"
+      })
   static final class SpecifiedTradeSettlementHeaderMonetarySummation {
     @XmlElement(name = "LineTotalAmount", namespace = RAM_NS)
     String lineTotalAmount;
+
+    @XmlElement(name = "AllowanceTotalAmount", namespace = RAM_NS)
+    String allowanceTotalAmount;
 
     @XmlElement(name = "TaxBasisTotalAmount", namespace = RAM_NS)
     String taxBasisTotalAmount;
