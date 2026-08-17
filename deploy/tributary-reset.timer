@@ -1,0 +1,9 @@
+[Unit]
+Description=Run the Tributary demo reset daily
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

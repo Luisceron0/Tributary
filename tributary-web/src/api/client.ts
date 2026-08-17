@@ -15,7 +15,15 @@ import type { components, paths } from "./schema";
  * scheduled reset) is what makes it acceptable — not the fact that it is called a demo.
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+/**
+ * Empty string, not a `localhost` fallback, is the safe default: it resolves to same-origin
+ * relative requests, which is correct for the production deployment (Caddy proxies /api/* on the
+ * same origin the page loaded from — no CORS surface at all, see deploy/Caddyfile) and fails
+ * loudly in local dev if VITE_API_BASE_URL is forgotten (calls hit the Vite dev server's own
+ * origin and 404, rather than silently only working because a developer happens to have the API
+ * on localhost:8080). Local dev sets it explicitly via .env.local (scripts/demo/setup.sh).
+ */
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export type DemoRole = "OPERATOR" | "AUDITOR" | "ADMIN";
 

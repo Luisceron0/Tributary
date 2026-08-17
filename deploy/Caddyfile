@@ -1,0 +1,43 @@
+{$TRIBUTARY_DOMAIN} {
+	encode gzip
+
+	# T-901/§10.5: TLS termination happens here. Caddy obtains and renews the certificate
+	# automatically from Let's Encrypt for any real domain in TRIBUTARY_DOMAIN — including a
+	# zero-cost sslip.io/nip.io name for a deployment with no domain of its own (see
+	# docs/deployment.md). No manual certificate handling anywhere in this stack.
+
+	# Same origin as the page that calls it: the browser never makes a cross-origin request in
+	# production, which is why TRIBUTARY_CORS_ALLOWED_ORIGINS stays empty in deploy/.env.example —
+	# not a relaxed default, a smaller attack surface than CORS entirely.
+	handle /api/* {
+		reverse_proxy api:8080 {
+			# T-901: this is the ONE hop ClientIpResolver is configured to trust
+			# (TRIBUTARY_TRUSTED_PROXIES pins Caddy's static address on the edge network) — every
+			# other X-Forwarded-For value is attacker-controlled and Caddy's reverse_proxy already
+			# appends the real client address as the last hop, which is what makes the trust
+			# boundary meaningful rather than decorative.
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# T-707: /v3/api-docs only ever answers when the container was started with
+	# tributary.openapi.export-enabled=true, which this deployment never sets — proxying it here
+	# does not reopen ADR-009's "exactly one public route" claim, it forwards to a route that is
+	# itself still closed.
+	handle /v3/api-docs* {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		# Belt and suspenders with SecurityConfig's own headers on API responses — these apply to
+		# the static frontend responses that SecurityConfig never sees.
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+	}
+}

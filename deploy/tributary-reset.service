@@ -1,0 +1,9 @@
+[Unit]
+Description=Tributary demo reset (T-904/T-906) — fresh database, fresh keys, fresh tokens
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/tributary
+EnvironmentFile=/opt/tributary/deploy/reset-domain.env
+ExecStart=/opt/tributary/deploy/reset.sh ${TRIBUTARY_DOMAIN}

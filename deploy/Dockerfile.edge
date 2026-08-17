@@ -1,0 +1,26 @@
+# T-906: builds the frontend and serves it — plus reverse-proxies /api/* — from one Caddy
+# container. Build context is the repo root (docker-compose.prod.yml sets it): the frontend's own
+# `generate:api` script reads ../docs/openapi.json relative to tributary-web/, so both directories
+# need to be in the build context together, the same reason tributary-api/Dockerfile isn't built
+# from its own module directory either.
+
+FROM node:24-slim AS build
+WORKDIR /workspace
+COPY tributary-web/package.json tributary-web/package-lock.json tributary-web/
+RUN cd tributary-web && npm ci
+COPY docs/openapi.json docs/openapi.json
+COPY tributary-web tributary-web
+
+# Demo credentials baked in at build time, not runtime — this is a static site with no server of
+# its own to inject them later. ADR-010: OPERATOR/AUDITOR only. VITE_DEMO_TOKEN_ADMIN is
+# deliberately never passed to this build; see deploy/mint-demo-tokens.sh.
+ARG VITE_DEMO_TOKEN_OPERATOR
+ARG VITE_DEMO_TOKEN_AUDITOR
+ENV VITE_API_BASE_URL=""
+ENV VITE_DEMO_TOKEN_OPERATOR=${VITE_DEMO_TOKEN_OPERATOR}
+ENV VITE_DEMO_TOKEN_AUDITOR=${VITE_DEMO_TOKEN_AUDITOR}
+RUN cd tributary-web && npm run generate:api && npm run build
+
+FROM caddy:2-alpine
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /workspace/tributary-web/dist /srv

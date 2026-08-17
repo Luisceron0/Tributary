@@ -14,6 +14,9 @@ secrets/
 credentials.json
 # T-705: throwaway demo JWT keypair + minted tokens (scripts/demo/setup.sh regenerates on demand).
 .demo/
+# T-906: the production domain the reset timer targets — written on the server by the runbook
+# (docs/deployment.md), never committed.
+deploy/reset-domain.env
 
 # --- Build ------------------------------------------------------------------
 target/
