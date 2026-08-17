@@ -537,15 +537,32 @@ origen separado, cliente TS **generado** desde `docs/openapi.json`.
   - React 19.2.8 + TypeScript 5.9.3 + Vite 8.2.1, **todas las versiones fijadas exactas** (sin `^` ni `~`), verificado con un chequeo que compara `package.json` contra el `package-lock.json` resuelto → `all pins exact`, `found 0 vulnerabilities`
   - **Conflicto real de peer dependency, resuelto con una decisión de versión y no con `--legacy-peer-deps`:** el scaffold de Vite trae TypeScript 6.0.3, pero `openapi-typescript@7.13.0` declara `peer typescript@^5.x`. Como el generador es justamente la pieza que hace verificable al contrato, TypeScript queda fijado en 5.9.3 — documentado en el propio `package.json`
   - Pendiente de integrar al reactor Maven (se hará junto con T-805, el SCA de npm en CI)
-- [ ] **T-803** Vistas por rol — OPERATOR registra/emite/corrige · AUDITOR lee y verifica cadena · ADMIN supresión
+- [x] **T-803** Vistas por rol — OPERATOR registra/emite/corrige · AUDITOR lee y verifica cadena · ADMIN supresión
   - Selector de rol declarado como demo en la propia interfaz, nunca presentado como login
-- [ ] **T-804** Página pública de verificación — destino real del QR de ADR-007, sin token (ADR-009)
+  - `OperatorPanel` mantiene registro y emisión como **dos pasos separados** a propósito: registrar produce un `DRAFT` y emitir es la transición irreversible (ADR-003). Un solo botón habría tergiversado la máquina de estados que es el tema del proyecto
+  - `AuditorPanel` es donde la tesis se ve: `BROKEN` nombra el registro exacto cuya huella almacenada deja de coincidir con la recomputada (CV-03)
+  - **Mitigación del riesgo de tokens públicos, implementada:** el perfil por defecto de `scripts/demo/setup.sh` mintea **solo** OPERATOR y AUDITOR. Como los tokens van firmados con RS256, leer los publicados no permite fabricar uno de ADMIN — eso exige la clave privada, que nunca sale del build. `DELETE /subjects/{id}/personal-data` queda inalcanzable **por criptografía, no por política**. `--with-admin` existe para la demo local completa y está marcado como "nunca desplegar"
+  - `AdminPanel` **explica** esa indisponibilidad en vez de esconder la pestaña: la frontera de separación de funciones es más interesante visible que ausente
+  - ADR-010 hace real la allowlist de CORS: `setup.sh` fija `TRIBUTARY_CORS_ALLOWED_ORIGINS` al origen del frontend — sigue siendo lista explícita, nunca comodín
+- [x] **T-804** Página pública de verificación — destino real del QR de ADR-007, sin token (ADR-009)
   - Cierra el hueco funcional: hoy una persona que escanea el QR recibe JSON crudo
   - **Componente construido y con tipos verificados** (`src/components/RecordVerification.tsx`): renderiza los seis campos exactos que ADR-009 permite exponer (sin PII, sin importes, sin identificadores fiscales), distingue "no existe ese registro" de "el verificador no respondió" —una negativa no es un error— y muestra `nonSubmittedNotice` de forma prominente, no en letra chica: esconderlo derrotaría el control del que esta página es el extremo visible (ADR-005/ADR-007)
-  - **Falta para cerrar:** que `VerifactuQrGenerator` apunte a la URL de esta página en vez de a la del endpoint JSON, con su test de CV-12 actualizado
-- [ ] **T-805** SCA del ecosistema npm en CI, mismo umbral bloqueante que Maven (HIGH/CRITICAL)
+  - **Cerrado:** `VerifactuQrGenerator` ahora emite `<<base>>/?record=<uuid>` — la página legible, no el endpoint JSON. `App.tsx` lee ese parámetro y verifica al cargar, sin añadir un router: quien escanea una factura impresa no debería retipear un UUID. `VerifactuQrGeneratorTest` (CV-12) sigue en verde, 6/6, incluida la aserción de que ningún host de la AEAT aparece jamás
+- [x] **T-805** SCA del ecosistema npm en CI, mismo umbral bloqueante que Maven (HIGH/CRITICAL)
   - Hoy `trivy` solo cubre `pom.xml`; el frontend introduce una cadena de suministro que ningún control actual ve
+  - Un solo escaneo cubre ambos ecosistemas: `trivy` desde la raíz recoge los ocho `pom.xml` **y** `tributary-web/package-lock.json`. Verificado con salida real
+  - **`TRIVY_INCLUDE_DEV_DEPS=true` añadido a propósito:** trivy suprime las dependencias de desarrollo de npm por defecto, y en este proyecto la cadena de build (Vite, el generador de OpenAPI, el type checker) es justamente la que produce el artefacto que recibe el usuario — un compromiso ahí no es "solo una dependencia de desarrollo"
+  - **Job `frontend` nuevo en CI**, que es donde la garantía de T-801 se vuelve real: regenera el cliente desde `docs/openapi.json`, falla si difiere de lo commiteado (`git diff --exit-code`), lintea y compila. Un contrato que se desvíe de lo que el frontend consume rompe CI, igual que un test roto
+  - `npm ci` como paso de instalación: falla si `package.json` y `package-lock.json` discrepan — que es también el chequeo de que los pines exactos (SRS 5.3) no derivaron
+  - Los cinco pasos del job ejecutados localmente antes de confiarlos al YAML; SHA de `actions/setup-node` resuelto contra la API real de GitHub, como el resto (nunca un tag mutable)
+  - **Hallazgo real del reescaneo — ver L-031:** apareció `org.postgresql:postgresql 42.7.11` con CVE-2026-54291 pese al pin en `42.7.12`. Tercera aparición del patrón de L-023: el BOM de Spring Boot en `tributary-api` también gestiona el driver y Flyway, y ganaba al resolver desde ese módulo. Corregido con pines explícitos; ambos ecosistemas a `0` HIGH/CRITICAL
 - [ ] **T-806** E2E contra la pila real levantada, no contra mocks
+  - **Verificación manual en navegador real ya ejecutada** con `agent-browser` (Chromium local) contra la pila completa de `docker compose`: navegador → CORS → JWT → Spring Boot → PostgreSQL → UI
+    - OPERATOR: registrar → `DRAFT` con `businessKey` real y totales correctos (100 / 19 / 119 EUR); emitir → `ISSUED`
+    - AUDITOR: verificar cadena → `INTACT · 1 record`. Se manipuló el `fiscal_record` por SQL directo (con el trigger deshabilitado) y se volvió a verificar **desde la UI** → `BROKEN` nombrando el registro exacto, con huella almacenada y recomputada distintas
+    - ADMIN: panel indisponible, como impone la mitigación de tokens
+  - Evidencia capturada: `docs/evidence/chain-broken.png` y `docs/evidence/admin-unavailable.png`
+  - **Falta para cerrar:** convertir ese recorrido manual en una suite automatizada que corra en CI. Hoy es verificación real pero no una prueba de regresión — la distinción importa y no se marca hecho hasta que exista
 
 ---
 

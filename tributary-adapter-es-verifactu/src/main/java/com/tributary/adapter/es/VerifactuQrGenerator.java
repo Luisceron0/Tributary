@@ -47,7 +47,12 @@ public final class VerifactuQrGenerator {
       }
     }
 
-    String url = verifierBaseUrl + "/api/v1/records/" + recordId + "/verification";
+    // T-804: this URL is scanned by a PERSON holding a printed invoice, so it points at the
+    // human-readable verification page, not at the JSON endpoint that page calls. Until ADR-010
+    // there was no page to point at and this built the API path directly — which meant a phone
+    // camera landed on raw JSON. The API route still exists and is still the one public endpoint
+    // (ADR-009); it is simply not what a QR should address.
+    String url = verifierBaseUrl + "/?record=" + recordId;
     return new VerifactuQrContent(url, NON_SUBMITTED_LEGEND);
   }
 

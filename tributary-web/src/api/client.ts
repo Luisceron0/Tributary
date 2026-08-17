@@ -25,7 +25,17 @@ export type RecordVerification = components["schemas"]["RecordVerificationView"]
 
 const client = createClient<paths>({ baseUrl: API_BASE_URL });
 
-/** Demo tokens, injected at build time. Never a real credential — see ADR-010. */
+/**
+ * Demo tokens, injected at build time. Never a real credential — see ADR-010.
+ *
+ * The public deployment deliberately builds **without** an ADMIN token. That is not a UI-level
+ * restriction that a determined visitor could bypass: every token is RS256-signed, so reading the
+ * published OPERATOR/AUDITOR tokens does not let anyone mint an ADMIN one — that needs the private
+ * key, which never leaves the build environment. With no valid ADMIN token in existence, `DELETE
+ * /api/v1/subjects/{subjectId}/personal-data` is unreachable on that instance by cryptography
+ * rather than by policy. CV-08 is still verified where it means something: against the API, in the
+ * integration suite.
+ */
 function demoToken(role: DemoRole): string | undefined {
   const tokens: Record<DemoRole, string | undefined> = {
     OPERATOR: import.meta.env.VITE_DEMO_TOKEN_OPERATOR,
@@ -33,6 +43,11 @@ function demoToken(role: DemoRole): string | undefined {
     ADMIN: import.meta.env.VITE_DEMO_TOKEN_ADMIN,
   };
   return tokens[role];
+}
+
+/** Which roles this build actually carries a credential for. */
+export function roleIsAvailable(role: DemoRole): boolean {
+  return Boolean(demoToken(role));
 }
 
 function authHeaders(role: DemoRole): Record<string, string> {
@@ -61,6 +76,15 @@ export async function getInvoice(role: DemoRole, businessKey: string) {
 export async function verifyChain(role: DemoRole, chainId: string) {
   return client.GET("/api/v1/chains/{chainId}/verification", {
     params: { path: { chainId } },
+    headers: authHeaders(role),
+  });
+}
+
+/** RF-007, ADMIN only. Unreachable on the public demo build — see {@link demoToken}. */
+export async function suppressPersonalData(role: DemoRole, subjectId: string, justification: string) {
+  return client.DELETE("/api/v1/subjects/{subjectId}/personal-data", {
+    params: { path: { subjectId } },
+    body: { justification },
     headers: authHeaders(role),
   });
 }

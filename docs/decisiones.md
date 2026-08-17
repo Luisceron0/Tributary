@@ -186,3 +186,31 @@ paquete npm `ecc-universal` si en el futuro trae el setup guiado) — nunca `npx
   específica — no se dispara solo porque la herramienta ya está instalada.
 
 **Decisión: instalado, sin ejecutar. Ejecutarlo requiere autorización separada.**
+
+---
+
+## agent-browser (`vercel-labs/agent-browser`)
+
+**Nota de contexto:** el pedido original de tooling excluía esta herramienta explícitamente, con
+un motivo correcto en su momento: *"el proyecto no tiene UI (ADR-006), sería una herramienta sin
+tarea que la use."* Ese motivo **caducó** al aprobarse ADR-010 — ahora existe `tributary-web` y
+la herramienta tiene una tarea real (T-806, E2E contra la interfaz de verdad y no solo por
+terminal). Se registra el cambio de circunstancia en vez de instalarla en silencio.
+
+- **Fuente verificada:** `github.com/vercel-labs/agent-browser` (Vercel Labs), paquete npm oficial
+  `agent-browser` (0.34.0). CLI nativa en Rust. El binario de Chrome lo descarga
+  `agent-browser install` desde `storage.googleapis.com/chrome-for-testing-public`, el canal
+  oficial de Chrome for Testing.
+- **Superficie de datos:** controla un Chromium **local**; capturas y árboles de accesibilidad se
+  quedan en la máquina. Existen proveedores de navegador en la nube (Browserbase, Browserless,
+  AgentCore) que son **opcionales** y exigen credenciales propias — no se configuran, así que no
+  hay tránsito de datos hacia terceros.
+- **STRIDE ligero:** conduce un navegador, no ejecuta comandos de shell con entrada no confiable.
+  El riesgo real es de dirección: apuntada a una página con credenciales podría capturarlas en un
+  screenshot. Acotado por uso: solo se apunta a la instancia local de demo, cuyos tokens son
+  públicos por diseño (ADR-010) y no protegen nada real.
+- **Scope de contexto:** CLI, no un skill que cargue contexto.
+- **Conflicto con el mandato:** ninguno — su modo por defecto ya es local.
+- **Registro:** esta entrada.
+
+**Decisión: habilitada, uso local únicamente (sin proveedores de navegador en la nube).**

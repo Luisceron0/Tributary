@@ -42,13 +42,13 @@ class VerifactuQrGeneratorTest {
   }
 
   @Test
-  @DisplayName("the verification URL points to this system's own endpoint")
+  @DisplayName("T-804: the URL points to this system's own human-readable verification page, not to the JSON endpoint a phone camera cannot read")
   void urlPointsToOwnVerificationEndpoint() {
     UUID recordId = UUID.fromString("11111111-1111-1111-1111-111111111111");
     VerifactuQrContent content = VerifactuQrGenerator.contentFor(recordId, "https://tributary.example.com");
 
     assertEquals(
-        "https://tributary.example.com/api/v1/records/11111111-1111-1111-1111-111111111111/verification",
+        "https://tributary.example.com/?record=11111111-1111-1111-1111-111111111111",
         content.verificationUrl());
   }
 

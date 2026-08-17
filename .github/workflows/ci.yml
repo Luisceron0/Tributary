@@ -61,7 +61,12 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - name: Trivy dependency scan (HIGH/CRITICAL blocking)
+      # T-805: one scan covers both ecosystems — trivy picks up every pom.xml AND
+      # tributary-web/package-lock.json from the repo root. --include-dev-deps matters here:
+      # trivy suppresses npm dev dependencies by default, and in this project the build toolchain
+      # (Vite, the OpenAPI generator, the type checker) is exactly the supply chain that produces
+      # the artifact users receive, so a compromise there is not "only a dev dependency".
+      - name: Trivy dependency scan — Maven + npm (HIGH/CRITICAL blocking)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
@@ -69,6 +74,45 @@ jobs:
           scan-ref: "."
           severity: "HIGH,CRITICAL"
           exit-code: "1"
+        env:
+          TRIVY_INCLUDE_DEV_DEPS: "true"
+
+  # T-801/T-805: the frontend build is where the OpenAPI contract stops being documentation. The
+  # client types are REGENERATED from docs/openapi.json here and the build must still pass — so a
+  # contract that drifted away from what the frontend consumes fails CI, exactly like a broken
+  # test. Verified by falsifiability: renaming a field in the contract produced TS2339 at the
+  # precise call site.
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tributary-web
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: tributary-web/package-lock.json
+
+      # `npm ci` fails if package.json and package-lock.json disagree — which is also the check
+      # that the exact-version pins (SRS 5.3) have not drifted.
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Regenerate the API client from the committed contract
+        run: npm run generate:api
+
+      - name: Fail if the generated client differs from what is committed
+        run: git diff --exit-code src/api/schema.d.ts
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (type-checks against the contract)
+        run: npm run build
 
   # CV-06: 0 findings, full history, not just the diff (the pre-commit hook already covers the
   # diff at commit time — see .githooks/pre-commit — this is the independent, fail-closed check

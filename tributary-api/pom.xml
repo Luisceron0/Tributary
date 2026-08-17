@@ -118,6 +118,30 @@
         <artifactId>junit-platform-suite-api</artifactId>
         <version>1.14.4</version>
       </dependency>
+      <!--
+        THIRD occurrence of the L-023 pattern, found by trivy after the frontend work (L-031):
+        spring-boot-dependencies also manages org.postgresql:postgresql and Flyway, and those
+        managed versions win over tributary-persistence's own pins when the graph is resolved from
+        THIS module — so `mvn dependency:tree -pl tributary-persistence` showed the correct 42.7.12
+        while tributary-api silently got 42.7.11 (carrying CVE-2026-54291) and Flyway 11.7.2.
+        A module that imports an external BOM must re-pin every version its own dependencies pin,
+        not only the ones that have already bitten.
+      -->
+      <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <version>42.7.12</version>
+      </dependency>
+      <dependency>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-core</artifactId>
+        <version>11.8.2</version>
+      </dependency>
+      <dependency>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-database-postgresql</artifactId>
+        <version>11.8.2</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
