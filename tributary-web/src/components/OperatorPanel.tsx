@@ -69,10 +69,10 @@ export function OperatorPanel() {
       <input id="saleId" value={saleId} onChange={(e) => setSaleId(e.target.value)} />
 
       <div className="actions">
-        <button type="button" onClick={register} disabled={busy}>
+        <button type="button" data-testid="register" onClick={register} disabled={busy}>
           1 · Register (DRAFT)
         </button>
-        <button type="button" onClick={issue} disabled={busy || !invoice}>
+        <button type="button" data-testid="issue" onClick={issue} disabled={busy || !invoice}>
           2 · Issue
         </button>
       </div>

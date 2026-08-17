@@ -39,16 +39,16 @@ export default function App() {
       </header>
 
       <nav aria-label="Role">
-        <button type="button" aria-pressed={tab === "verify"} onClick={() => setTab("verify")}>
+        <button type="button" data-testid="tab-verify" aria-pressed={tab === "verify"} onClick={() => setTab("verify")}>
           Public verification
         </button>
-        <button type="button" aria-pressed={tab === "operator"} onClick={() => setTab("operator")}>
+        <button type="button" data-testid="tab-operator" aria-pressed={tab === "operator"} onClick={() => setTab("operator")}>
           Operator
         </button>
-        <button type="button" aria-pressed={tab === "auditor"} onClick={() => setTab("auditor")}>
+        <button type="button" data-testid="tab-auditor" aria-pressed={tab === "auditor"} onClick={() => setTab("auditor")}>
           Auditor
         </button>
-        <button type="button" aria-pressed={tab === "admin"} onClick={() => setTab("admin")}>
+        <button type="button" data-testid="tab-admin" aria-pressed={tab === "admin"} onClick={() => setTab("admin")}>
           Administrator
         </button>
       </nav>

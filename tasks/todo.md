@@ -562,7 +562,10 @@ origen separado, cliente TS **generado** desde `docs/openapi.json`.
     - AUDITOR: verificar cadena → `INTACT · 1 record`. Se manipuló el `fiscal_record` por SQL directo (con el trigger deshabilitado) y se volvió a verificar **desde la UI** → `BROKEN` nombrando el registro exacto, con huella almacenada y recomputada distintas
     - ADMIN: panel indisponible, como impone la mitigación de tokens
   - Evidencia capturada: `docs/evidence/chain-broken.png` y `docs/evidence/admin-unavailable.png`
-  - **Falta para cerrar:** convertir ese recorrido manual en una suite automatizada que corra en CI. Hoy es verificación real pero no una prueba de regresión — la distinción importa y no se marca hecho hasta que exista
+  - **Automatizado en `scripts/e2e-browser.sh`**, que es lo que lo convierte de verificación puntual en prueba de regresión: seis aserciones sobre el *snapshot de accesibilidad* (lo que un usuario y un lector de pantalla realmente reciben, no el HTML crudo), incluida la manipulación de la base a mitad de corrida y la exigencia de que la UI reporte `BROKEN` con las huellas discrepantes
+  - Selectores por `data-testid`, no por refs del snapshot: los refs se reasignan en cada navegación, así que un script escrito contra ellos se rompe por razones ajenas al sistema bajo prueba
+  - **Prueba de falsabilidad decisiva:** con base limpia y el paso de manipulación neutralizado, fallaron **exactamente** las dos aserciones de detección y ninguna otra. Eso prueba que leen estado vivo y que la suite puede fallar de verdad — una suite que no se vio fallar no verifica nada (CV-13, aplicado a sí misma). Revertido, verde otra vez
+  - **Falta para cerrar:** correrlo dentro de CI. Requiere levantar Postgres + API + frontend e instalar Chromium en el runner; hoy corre localmente contra la pila real, que es donde aporta la señal, pero no es todavía un gate automático
 
 ---
 

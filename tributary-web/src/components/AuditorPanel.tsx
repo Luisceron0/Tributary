@@ -74,7 +74,7 @@ export function AuditorPanel() {
 
       <label htmlFor="chainId">Chain identifier</label>
       <input id="chainId" value={chainId} onChange={(e) => setChainId(e.target.value)} />
-      <button type="button" onClick={checkChain} disabled={!chainId.trim()}>
+      <button type="button" data-testid="verify-chain" onClick={checkChain} disabled={!chainId.trim()}>
         Verify chain
       </button>
 
