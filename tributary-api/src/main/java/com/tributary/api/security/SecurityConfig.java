@@ -84,16 +84,26 @@ public class SecurityConfig {
   }
 
   /**
-   * T-900, by IP. Deliberately uses {@code getRemoteAddr()} and NOT {@code X-Forwarded-For}:
-   * until T-901 establishes which proxy is trusted, honouring that header would let anyone
-   * bypass this limit by forging it. Fail closed — a limit that trusts attacker-supplied
-   * identity is not a limit.
+   * T-901: {@code X-Forwarded-For} is honoured only when the connection arrives from a declared
+   * proxy. Empty by default, which means the header is ignored entirely — the fail-closed choice
+   * (see {@link ClientIpResolver}).
+   */
+  @Bean
+  public ClientIpResolver clientIpResolver(
+      @Value("${tributary.security.trusted-proxies:}") String trustedProxies) {
+    return new ClientIpResolver(splitCsv(trustedProxies));
+  }
+
+  /**
+   * T-900, by IP, keyed through {@link ClientIpResolver} so the limit counts the real client
+   * behind a trusted proxy — and refuses to believe a forged header anywhere else. A limit that
+   * trusts attacker-supplied identity is not a limit.
    */
   @Bean
   public RateLimitFilter ipRateLimitFilter(
-      @Value("${tributary.security.rate-limit.per-ip-per-minute:120}") int permitsPerMinute) {
-    return new RateLimitFilter(
-        "per-ip", permitsPerMinute, request -> java.util.Optional.ofNullable(request.getRemoteAddr()));
+      @Value("${tributary.security.rate-limit.per-ip-per-minute:120}") int permitsPerMinute,
+      ClientIpResolver clientIpResolver) {
+    return new RateLimitFilter("per-ip", permitsPerMinute, clientIpResolver::resolve);
   }
 
   /**
