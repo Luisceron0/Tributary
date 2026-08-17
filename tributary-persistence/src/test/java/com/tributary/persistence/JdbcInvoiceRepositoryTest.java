@@ -107,7 +107,7 @@ class JdbcInvoiceRepositoryTest extends AbstractPostgresTest {
     Buyer buyerWithPii =
         Buyer.withTaxIdentifier("Handel GmbH", "DE999888777", "DE")
             .withPersonalData(
-                Optional.of("Hauptstraße 1, 10115 Berlin"), Optional.of("buyer@handel.de"),
+                Optional.of("Hauptstraße 1, 10115 Berlin"), Optional.of("buyer@handel.invalid"),
                 Optional.of("+49 30 1234567"));
     InvoiceLine line =
         InvoiceLine.standardRate(
@@ -141,7 +141,7 @@ class JdbcInvoiceRepositoryTest extends AbstractPostgresTest {
                       rs.getBytes("email_encrypted"), rs.getBytes("phone_encrypted")
                     })
             .single();
-    String[] plaintexts = {"Handel GmbH", "Hauptstraße 1, 10115 Berlin", "buyer@handel.de", "+49 30 1234567"};
+    String[] plaintexts = {"Handel GmbH", "Hauptstraße 1, 10115 Berlin", "buyer@handel.invalid", "+49 30 1234567"};
     for (int i = 0; i < blobs.length; i++) {
       String rawBytesAsLatin1 = new String(blobs[i], java.nio.charset.StandardCharsets.ISO_8859_1);
       assertTrue(

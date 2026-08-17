@@ -83,12 +83,43 @@ public class SecurityConfig {
     return new ActorCaptureFilter();
   }
 
+  /**
+   * T-900, by IP. Deliberately uses {@code getRemoteAddr()} and NOT {@code X-Forwarded-For}:
+   * until T-901 establishes which proxy is trusted, honouring that header would let anyone
+   * bypass this limit by forging it. Fail closed — a limit that trusts attacker-supplied
+   * identity is not a limit.
+   */
+  @Bean
+  public RateLimitFilter ipRateLimitFilter(
+      @Value("${tributary.security.rate-limit.per-ip-per-minute:120}") int permitsPerMinute) {
+    return new RateLimitFilter(
+        "per-ip", permitsPerMinute, request -> java.util.Optional.ofNullable(request.getRemoteAddr()));
+  }
+
+  /**
+   * T-900, by client. Keyed on the JWT subject, so it must sit AFTER authentication — reading a
+   * subject from an unverified token would be trusting attacker-supplied identity (T-009).
+   */
+  @Bean
+  public RateLimitFilter clientRateLimitFilter(
+      @Value("${tributary.security.rate-limit.per-client-per-minute:60}") int permitsPerMinute) {
+    return new RateLimitFilter(
+        "per-client",
+        permitsPerMinute,
+        request ->
+            java.util.Optional.ofNullable(request.getAttribute(ActorCaptureFilter.ACTOR_ATTRIBUTE))
+                .map(Object::toString)
+                .filter(actor -> !"anonymous".equals(actor)));
+  }
+
   @Bean
   public SecurityFilterChain filterChain(
       HttpSecurity http,
       HostAllowlistFilter hostAllowlistFilter,
       com.tributary.api.web.RequestLoggingFilter requestLoggingFilter,
       ActorCaptureFilter actorCaptureFilter,
+      RateLimitFilter ipRateLimitFilter,
+      RateLimitFilter clientRateLimitFilter,
       @Value("${tributary.security.cors-allowed-origins:}") String corsAllowedOrigins,
       @Value("${tributary.openapi.export-enabled:false}") boolean openApiExportEnabled) throws Exception {
     // T-707: /v3/api-docs is reachable ONLY when this deployment was started specifically to
@@ -114,6 +145,8 @@ public class SecurityConfig {
         // or authentication/authorization reject downstream — a wrapping filter (try/finally
         // around the rest of the chain) still sees the final response status either way.
         .addFilterBefore(requestLoggingFilter, HostAllowlistFilter.class)
+        // T-900: the IP limit runs before authentication so a flood costs no RSA verification.
+        .addFilterAfter(ipRateLimitFilter, HostAllowlistFilter.class)
         // Positioned AFTER JWT authentication resolves, BEFORE the authorization decision — see
         // ActorCaptureFilter's own Javadoc: this is the one point where the security context is
         // both populated (authentication has run) and not yet cleared, and it stashes the actor
@@ -123,6 +156,8 @@ public class SecurityConfig {
             actorCaptureFilter,
             org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter
                 .class)
+        // T-900: the per-client limit needs the verified subject, so it follows ActorCaptureFilter.
+        .addFilterAfter(clientRateLimitFilter, ActorCaptureFilter.class)
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
             authorize ->

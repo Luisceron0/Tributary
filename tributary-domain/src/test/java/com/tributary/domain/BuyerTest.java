@@ -65,14 +65,14 @@ class BuyerTest {
 
     Buyer withPii =
         base.withPersonalData(
-            Optional.of("Hauptstraße 1, 10115 Berlin"), Optional.of("buyer@handel.de"), Optional.of("+49 30 1234567"));
+            Optional.of("Hauptstraße 1, 10115 Berlin"), Optional.of("buyer@handel.invalid"), Optional.of("+49 30 1234567"));
 
     assertAll(
         () -> assertEquals("Handel GmbH", withPii.name()),
         () -> assertEquals("DE123456789", withPii.taxIdentifier().orElseThrow()),
         () -> assertEquals("DE", withPii.countryCode()),
         () -> assertEquals("Hauptstraße 1, 10115 Berlin", withPii.address().orElseThrow()),
-        () -> assertEquals("buyer@handel.de", withPii.email().orElseThrow()),
+        () -> assertEquals("buyer@handel.invalid", withPii.email().orElseThrow()),
         () -> assertEquals("+49 30 1234567", withPii.phone().orElseThrow()));
   }
 }

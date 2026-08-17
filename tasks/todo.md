@@ -536,7 +536,7 @@ origen separado, cliente TS **generado** desde `docs/openapi.json`.
 - [x] **T-802** Módulo `tributary-web`: scaffold Vite, build integrado al reactor, lockfile fijado (SRS 5.3)
   - React 19.2.8 + TypeScript 5.9.3 + Vite 8.2.1, **todas las versiones fijadas exactas** (sin `^` ni `~`), verificado con un chequeo que compara `package.json` contra el `package-lock.json` resuelto → `all pins exact`, `found 0 vulnerabilities`
   - **Conflicto real de peer dependency, resuelto con una decisión de versión y no con `--legacy-peer-deps`:** el scaffold de Vite trae TypeScript 6.0.3, pero `openapi-typescript@7.13.0` declara `peer typescript@^5.x`. Como el generador es justamente la pieza que hace verificable al contrato, TypeScript queda fijado en 5.9.3 — documentado en el propio `package.json`
-  - Pendiente de integrar al reactor Maven (se hará junto con T-805, el SCA de npm en CI)
+  - **Decidido NO integrarlo al reactor Maven**, revirtiendo la intención inicial: `frontend-maven-plugin` descargaría un segundo toolchain de Node dentro de `target/`, alentaría cada `mvn test` del repo, y verificaría lo mismo que el job `frontend` de CI ya verifica (`npm ci` → generar → lintear → construir). Un repositorio políglota con el JS fuera del reactor es lo normal y lo más simple; acoplarlo habría sido trabajo sin problema detrás
 - [x] **T-803** Vistas por rol — OPERATOR registra/emite/corrige · AUDITOR lee y verifica cadena · ADMIN supresión
   - Selector de rol declarado como demo en la propia interfaz, nunca presentado como login
   - `OperatorPanel` mantiene registro y emisión como **dos pasos separados** a propósito: registrar produce un `DRAFT` y emitir es la transición irreversible (ADR-003). Un solo botón habría tergiversado la máquina de estados que es el tema del proyecto
@@ -572,13 +572,22 @@ origen separado, cliente TS **generado** desde `docs/openapi.json`.
 público con el threat model de un entorno local es exactamente el fallo que este documento existe
 para evitar."*
 
-- [ ] **T-900** Rate limiter entrante por IP y por cliente, con `429`
+- [x] **T-900** Rate limiter entrante por IP y por cliente, con `429`
   - Cierra el gap ya declarado en §6.5 (la fila de `issuances` lista `429 limitador propio` y hoy no es alcanzable)
+  - `RateLimitFilter`: una clase, registrada **dos veces** en puntos distintos de la cadena porque los dos límites necesitan material de clave distinto. Por IP va **antes** de la autenticación, para que una inundación no autenticada no cueste una verificación RSA por petición; por cliente va **después**, porque leer el `sub` de un token sin verificar sería confiar en identidad suministrada por el atacante (T-009)
+  - **Decisión de fail-closed:** la clave por IP usa `getRemoteAddr()` y **no** `X-Forwarded-For`. Hasta que T-901 establezca cuál es el proxy confiable, honrar esa cabecera permitiría saltarse el límite falsificándola — un límite que confía en identidad del atacante no es un límite
+  - Token bucket, no ventana fija: suaviza ráfagas en vez de dejar que se explote el borde de la ventana. Estado en memoria (SRS 6.2: un solo despliegue, sin caché compartida que introducir), con desalojo de buckets inactivos para que el mapa no crezca sin límite ante direcciones rotativas
+  - `RateLimitIntegrationTest`, 3 tests: el bucket se vacía y responde `429` **con `Retry-After`**; el límite aplica a peticiones no autenticadas (prueba que va delante de la autenticación); un token válido no es una exención
+  - **Prueba de falsabilidad:** se desactivó el rechazo (`if (false)`) y los **tres** tests fallaron. Revertido, verde de nuevo
+  - **Interacción a tener en cuenta en T-905:** una corrida de `sqlmap` contra la instancia pública ahora chocará con este límite — que es el comportamiento correcto, no un fallo. La corrida ofensiva tendrá que elevar el límite deliberadamente o contar los `429` como resultado esperado; lo que **no** se hará es desactivar el limitador para que la herramienta "pase"
 - [ ] **T-901** TLS terminado en proxy de confianza, HSTS ≥ 1 año; `X-Forwarded-For` aceptado solo desde la IP del proxy y descartado del cliente
 - [ ] **T-902** §7B reevaluado: etapas Reconnaissance y Delivery bajo exposición pública, niveles actualizados en el documento
 - [ ] **T-903** Credenciales de sandbox de Factus rotadas antes de exponer (A-002 cambia de categoría)
-- [ ] **T-904** Revisión de que ningún dato de ejemplo contiene PII real
+- [x] **T-904** Revisión de que ningún dato de ejemplo contiene PII real
   - Precondición del despliegue demo de ADR-010: los tokens son públicos por diseño, así que los datos deben ser sintéticos y la base desechable con reset programado
+  - Barrido sistemático (correos, teléfonos, identificadores fiscales) sobre `*.json`, `*.java`, `*.sql`, `*.tsx`, `*.sh`, no solo sobre el archivo de ejemplo obvio
+  - **Hallazgo real:** `buyer@handel.de` usaba un dominio **realmente registrable**, mientras el otro correo del proyecto ya usaba correctamente el TLD reservado `.invalid` (RFC 2606). Esa inconsistencia es exactamente el riesgo del incidente documentado con `sqlmap` (≈200 correos de prueba entregados a buzones reales). Corregido a `buyer@handel.invalid` en los 5 sitios; los tests de los dos módulos afectados siguen verdes (52/52)
+  - Sin teléfonos reales. Identificadores fiscales todos con patrón claramente sintético (`ESB12345678`, `DE123456789`, `DE111111111`…)
 - [ ] **T-905** §9B íntegro contra la instancia **pública**, no la local
 - [ ] **T-906** Infraestructura de despliegue y reset programado de la base demo
 

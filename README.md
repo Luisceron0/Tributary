@@ -50,6 +50,11 @@ where it stops matching — not "something is wrong somewhere," a specific row I
 yourself with the [quickstart](#quickstart) below; both outputs above are real, from that same
 stack.
 
+The same verification through the web interface, driven in a real browser against the running
+stack:
+
+![Chain verification reporting BROKEN, naming the exact record whose stored hash no longer matches the recomputed one](docs/evidence/chain-broken.png)
+
 ## Scope and honesty
 
 > This is a reference implementation built against public specifications. It is **not certified**
@@ -70,11 +75,30 @@ No README, log message, response field, or comment in this codebase describes th
 compliant or certified under any regime — verified by static rules, not just discipline
 (see [Security](#security)).
 
+## Interface
+
+A small React interface ([ADR-010](docs/adr/ADR-010-web-frontend-demo-mode.md)) covers the same
+eight endpoints, one panel per role, plus the public verification page a scanned QR now lands on.
+
+**Authentication is demo mode: there is no login.** The page carries pre-minted tokens, which
+means anyone can read them — so a public build deliberately carries **no administrator
+credential**. That is a cryptographic limit rather than a UI one: tokens are RS256-signed, so
+reading the operator and auditor tokens cannot produce an administrator one without the private
+key, which never ships. Crypto-shredding is unreachable on such a build rather than merely
+hidden, and the interface explains that instead of hiding the tab:
+
+![The administrator panel explaining that this deployment carries no administrator credential, and why that is a cryptographic guarantee rather than a UI restriction](docs/evidence/admin-unavailable.png)
+
+The API client is **generated** from [`docs/openapi.json`](docs/openapi.json), so a contract that
+drifts from what the interface consumes fails the build — CI regenerates it and rejects any
+difference.
+
 ## Quickstart
 
 ```bash
 git clone <this repo> && cd tributary
-./scripts/demo/setup.sh       # generates a demo JWT keypair, .env, and one token per role
+./scripts/demo/setup.sh       # demo JWT keypair, .env, and operator + auditor tokens
+                              # (add --with-admin for the full local demo; never deploy that build)
 docker compose up --build     # Postgres + the API — ready in under 3 minutes from a cold pull
 ```
 
@@ -85,10 +109,11 @@ curl -s -X POST http://localhost:8080/api/v1/invoices \
   -H "Host: localhost" -d @scripts/demo/sample-invoice.json
 ```
 
-There's no login endpoint — by design
-([ADR-006](docs/adr/ADR-006-no-user-interface.md)). `tributary-api` is a pure OAuth2 resource
-server: it verifies tokens issued elsewhere, it doesn't issue them. `scripts/demo/setup.sh` mints
-its own throwaway ones so the walkthrough works without a real authorization server.
+There's no login endpoint — by design ([ADR-006](docs/adr/ADR-006-no-user-interface.md), and
+still true after [ADR-010](docs/adr/ADR-010-web-frontend-demo-mode.md) added an interface, because
+demo mode establishes no session). `tributary-api` is a pure OAuth2 resource server: it verifies
+tokens issued elsewhere, it doesn't issue them. `scripts/demo/setup.sh` mints its own throwaway
+ones so the walkthrough works without a real authorization server.
 
 ## Architecture
 
@@ -104,10 +129,11 @@ queues, no microservices — introducing them here would be complexity with no p
 | [003](docs/adr/ADR-003-idempotency-and-reconciliation.md) | Idempotency via a deterministic key, reconciliation before retry |
 | [004](docs/adr/ADR-004-crypto-shredding.md) | Crypto-shredding reconciles GDPR erasure with fiscal retention |
 | [005](docs/adr/ADR-005-es-adapter-does-not-remit.md) | ES adapter builds and chains records — never remits them |
-| [006](docs/adr/ADR-006-no-user-interface.md) | No user interface |
+| [006](docs/adr/ADR-006-no-user-interface.md) | No user interface — *superseded in part by 010* |
 | [007](docs/adr/ADR-007-es-qr-points-to-self.md) | ES-regime QR points at this system's own verifier |
 | [008](docs/adr/ADR-008-kosit-validator.md) | XRechnung validation uses the official KoSIT validator |
 | [009](docs/adr/ADR-009-public-verification-endpoint.md) | One public route: record verification, narrow response |
+| [010](docs/adr/ADR-010-web-frontend-demo-mode.md) | A web frontend, in demo authentication mode |
 
 ### Domain isolation (CV-07)
 
@@ -121,7 +147,7 @@ factory (`SecureXmlFactory`) — see the [XXE hardening evidence](#xxe-hardening
 
 ## Security
 
-Twelve controls, each with a tool, a command, and a binary pass/fail criterion — the full matrix
+Thirteen controls, each with a tool, a command, and a binary pass/fail criterion — the full matrix
 is §9A of [`docs/SRS-tributary.md`](docs/SRS-tributary.md#9a-matriz-de-verificación-de-controles).
 A sample:
 
@@ -133,6 +159,7 @@ A sample:
 | CV-09 | JWT algorithm confusion is rejected | An `alg:none` token and an HS256 token signed with the RSA public key's own bytes — both `401` |
 | CV-11 | The KoSIT validator artifact is exactly what it claims to be | SHA-256 checksum verified before use; a mismatch aborts the build |
 | CV-12 | The ES QR never claims a submission that didn't happen | Unit test asserts no AEAT hostname is ever present in the generated QR |
+| CV-13 | A SAST rule that never caught anything protects nothing | Each custom Semgrep rule is run against a deliberately vulnerable fixture first, and must fire there before its clean result on real code is trusted |
 
 ### XXE hardening (CV-04)
 

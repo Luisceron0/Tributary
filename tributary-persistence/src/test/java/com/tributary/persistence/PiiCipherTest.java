@@ -38,7 +38,7 @@ class PiiCipherTest {
   @DisplayName("the stored blob never contains the plaintext bytes")
   void blobNeverContainsPlaintext() {
     byte[] key = randomKey();
-    String secret = "buyer@handel.de";
+    String secret = "buyer@handel.invalid";
 
     byte[] blob = PiiCipher.encrypt(key, secret);
 
