@@ -584,7 +584,12 @@ para evitar."*
   - **Prueba de falsabilidad:** se desactivó el rechazo (`if (false)`) y los **tres** tests fallaron. Revertido, verde de nuevo
   - **Interacción a tener en cuenta en T-905:** una corrida de `sqlmap` contra la instancia pública ahora chocará con este límite — que es el comportamiento correcto, no un fallo. La corrida ofensiva tendrá que elevar el límite deliberadamente o contar los `429` como resultado esperado; lo que **no** se hará es desactivar el limitador para que la herramienta "pase"
 - [ ] **T-901** TLS terminado en proxy de confianza, HSTS ≥ 1 año; `X-Forwarded-For` aceptado solo desde la IP del proxy y descartado del cliente
-- [ ] **T-902** §7B reevaluado: etapas Reconnaissance y Delivery bajo exposición pública, niveles actualizados en el documento
+- [x] **T-902** §7B reevaluado: etapas Reconnaissance y Delivery bajo exposición pública, niveles actualizados en el documento
+  - SRS a v1.4. Tabla §7B ahora con columnas **M1 (local) / M2 (público)** y una columna de qué cambia exactamente al exponer
+  - **Reconnaissance sube de BAJO a ALTO**, y el motivo es honesto: el control que sostenía el nivel bajo era literalmente *"sin frontend público"*, y ADR-010 lo derogó. No se compensa fingiendo que sigue siendo BAJO — se acepta y se reduce lo que un reconocimiento exitoso habilita después
+  - Weaponization y Delivery mantienen nivel pero con enunciados **corregidos**: npm duplica la superficie de cadena de suministro (compensado en T-805), y *"autenticación obligatoria en todo endpoint"* ya era inexacto desde ADR-009, más aún con tokens demo publicados. A cambio, *"rate limiting entrante"* dejó de ser aspiración y es control verificado (T-900)
+  - Exploitation, Installation, C&C y Actions on Objectives **sin cambio de nivel**, con el razonamiento explícito: esos controles no dependen de si el sistema es alcanzable desde internet; la exposición sube la frecuencia de intento, no la eficacia del control
+  - **Amenaza T-013 añadida a §7C** (abuso de credenciales demo publicadas, DREAD 7.6/Alto) con sus cuatro mitigaciones y la justificación de cada dígito DREAD — `E`/`R` altos porque explotarlo es trivial y repetible, `D`/`A` bajos porque el daño máximo es ensuciar datos sintéticos desechables
 - [ ] **T-903** Credenciales de sandbox de Factus rotadas antes de exponer (A-002 cambia de categoría)
 - [x] **T-904** Revisión de que ningún dato de ejemplo contiene PII real
   - Precondición del despliegue demo de ADR-010: los tokens son públicos por diseño, así que los datos deben ser sintéticos y la base desechable con reset programado

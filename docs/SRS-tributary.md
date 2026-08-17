@@ -1,6 +1,6 @@
 # SRS — Tributary
 
-**Versión:** 1.3
+**Versión:** 1.4
 **Fecha:** 2026-08-14
 **Autor:** Luis Alejandro Cerón Muñoz | **Revisor técnico:** Arch-Sentinel
 **Estado:** **Aprobado** — sin `[PENDIENTE]` abiertos
@@ -412,17 +412,25 @@ Comunicación: llamadas en proceso a través de interfaces de puerto. Un único 
 
 ### 7B. Kill Chain Assessment
 
-| Etapa | Nivel | Controles de diseño |
-|-------|-------|---------------------|
-| Reconnaissance | BAJO | Sin frontend público; OpenAPI servida solo a clientes autenticados; mensajes de error genéricos |
-| Weaponization | MEDIO | SCA con bloqueo de merge, versiones fijadas, lockfile versionado |
-| Delivery | MEDIO | Autenticación obligatoria en todo endpoint, rate limiting entrante, límite de tamaño de cuerpo |
-| Exploitation | **CRÍTICO** | Sentencias preparadas en toda escritura incluida la de auditoría, parser XML endurecido, validación de cabeceras, ArchUnit |
-| Installation | BAJO | Contenedor sin shell, usuario no root, sistema de archivos de solo lectura |
-| Command & Control | MEDIO | Allowlist de egress; ninguna URL de documento entrante se dereferencia |
-| Actions on Objectives | **CRÍTICO** | Cifrado por titular, bitácora append-only, separación de funciones, verificador de cadena independiente |
+Reevaluado en v1.4 (T-902) para Milestone 2. La columna **M1** es el despliegue local original; la
+columna **M2** es el mismo sistema expuesto a internet con el frontend de ADR-010. Un nivel que
+sube es una afirmación sobre el sistema, no sobre el entorno: si el control que sostenía el nivel
+bajo dejó de ser cierto, el nivel sube aunque no se haya tocado una línea de código.
 
-**Conclusión:** las etapas 4 y 7 concentran el riesgo. El endurecimiento se concentra ahí, y la matriz §9A verifica exactamente esas dos.
+| Etapa | M1 | M2 | Qué cambia al exponer |
+|-------|----|----|------------------------|
+| Reconnaissance | BAJO | **ALTO** | El control que sostenía el nivel bajo era literalmente *"sin frontend público"*, y ADR-010 lo derogó. Una SPA pública es enumerable, indexable y con huella de versiones identificable; además sus tokens demo son legibles en el *bundle*, así que la superficie de la API queda descrita para cualquiera. Mitigación real: no hay una que devuelva esto a BAJO — se acepta el nivel y se compensa aguas abajo (límites, datos sintéticos, sin credencial ADMIN) |
+| Weaponization | MEDIO | MEDIO | Sin cambio de nivel, pero la superficie **se duplicó**: entra el ecosistema npm además de Maven. Compensado en T-805 (un solo escaneo cubre ambos, con `--include-dev-deps` porque la cadena de build produce el artefacto que recibe el usuario) |
+| Delivery | MEDIO | MEDIO | El enunciado original decía *"autenticación obligatoria en todo endpoint"*, y eso ya no era exacto desde ADR-009 (una ruta pública) y menos aún con tokens demo publicados. A cambio, *"rate limiting entrante"* pasó de aspiración a control real y verificado (T-900, `429` con `Retry-After`) |
+| Exploitation | **CRÍTICO** | **CRÍTICO** | Sin cambio: los controles (sentencias preparadas, parser endurecido, validación de cabeceras, ArchUnit) no dependen de si el sistema es alcanzable desde internet. La exposición aumenta la frecuencia de intento, no la eficacia del control |
+| Installation | BAJO | BAJO | Sin cambio: contenedor con usuario no root ya en el `Dockerfile` |
+| Command & Control | MEDIO | MEDIO | Sin cambio: la allowlist de egress y la regla de no dereferenciar ninguna URL de documento entrante son independientes de la exposición |
+| Actions on Objectives | **CRÍTICO** | **CRÍTICO** | Sin cambio de nivel. En la instancia demo concreta el peor caso se acota por criptografía y no por política: sin token ADMIN minteado, la supresión de datos personales es inalcanzable (ADR-010) |
+
+**Conclusión revisada:** las etapas 4 y 7 siguen concentrando el riesgo y siguen siendo las que §9A
+verifica. Lo que Milestone 2 cambia de verdad es **Reconnaissance**, que sube a ALTO por una
+decisión deliberada (ADR-010) y no por un descuido — y que no se compensa fingiendo que sigue
+siendo BAJO, sino aceptándolo y reduciendo lo que un reconocimiento exitoso permite hacer después.
 
 ### 7C. Amenazas identificadas (STRIDE + DREAD + ATT&CK)
 
@@ -440,6 +448,7 @@ Comunicación: llamadas en proceso a través de interfaces de puerto. Un único 
 | T-010 | Agotamiento de la cuota de Factus por otro proceso, bloqueando emisiones | DoS | A-005 | T1499 | 6 | 8 | 7 | 6 | 7 | 6.8 | Alto | Limitador propio a 60/min, cola con backpressure, tratamiento de `429` como incidente y no como flujo normal |
 | T-011 | Falsificación de token con algoritmo `none` o confusión de algoritmo | Spoofing | A-002 | T1078 | 9 | 7 | 6 | 8 | 5 | 7.0 | Alto | RS256 obligatorio, algoritmo fijado en el verificador, rechazo explícito de `none` y de HS256 |
 | T-012 | Validador KoSIT sustituido o alterado en la descarga de CI | Tampering (supply chain) | A-001 | T1195.002 | 8 | 5 | 6 | 7 | 3 | 5.8 | Medio | Versión fijada, checksum SHA-256 verificado antes de ejecutar, origen oficial único, build en rojo si no coincide (CV-11) |
+| T-013 | Abuso de las credenciales demo publicadas en el *bundle* del frontend | Spoofing / DoS | A-005 | T1078 | 5 | 10 | 10 | 4 | 9 | 7.6 | Alto | Inherente a ADR-010 y aceptado, no un descuido: los tokens en un artefacto estático son públicos por definición. Acotado por (a) no mintear jamás un token `ADMIN` para una build pública — al ir firmados con RS256, leer los publicados no permite fabricar uno, lo que hace la supresión de PII inalcanzable por criptografía y no por política; (b) rate limiting entrante (T-900); (c) base desechable con reset programado y datos sintéticos sin PII real (T-904); (d) aviso explícito en la interfaz y el README. `E`=10 y `R`=10 porque explotarlo es trivial y repetible; `D`=5 y `A`=4 porque el daño máximo es ensuciar datos sintéticos desechables |
 
 ### 7D. Controles implementados y dónde viven
 
@@ -629,5 +638,6 @@ Si alguna casilla queda sin marcar, el sistema permanece en Milestone 1. Un desp
 |---------|-------|-------|---------|
 | 0.9 | 2026-08-14 | Luis Cerón / Arch-Sentinel | Borrador inicial. Cuatro `[PENDIENTE]` abiertos en §0. |
 | 1.0 | 2026-08-14 | Luis Cerón / Arch-Sentinel | **Aprobado.** P-01 a P-04 resueltos. Añadidos ADR-007 (QR no remitido), ADR-008 (validador KoSIT), T-012 (cadena de suministro del validador), CV-11 y CV-12, y §10.5 (gate de exposición pública). Corregido RF-003: el QR ya no apunta a la AEAT. R-01 reescrito: el riesgo dejó de ser la ausencia de credenciales y pasó a ser su filtración. |
+| 1.4 | 2026-08-16 | Luis Cerón, decisión explícita en sesión | **T-902: §7B reevaluado bajo exposición pública**, como exige §10.5. Tabla con columnas M1/M2: **Reconnaissance sube de BAJO a ALTO** porque el control que lo sostenía era literalmente "sin frontend público" y ADR-010 lo derogó — se acepta el nivel en vez de fingir que no cambió, y se compensa reduciendo lo que un reconocimiento exitoso habilita. Weaponization y Delivery mantienen nivel pero con enunciados corregidos (npm duplica la superficie de suministro; "autenticación obligatoria en todo endpoint" ya era inexacto desde ADR-009). Añadida la amenaza **T-013** (abuso de credenciales demo publicadas, DREAD 7.6/Alto), documentada como consecuencia aceptada de ADR-010 con sus cuatro mitigaciones. |
 | 1.3 | 2026-08-16 | Luis Cerón, decisión explícita en sesión | **Entrada a Milestone 2 y frontend.** Añadido ADR-010 (frontend web en modo demo), que deroga **en parte** a ADR-006: cae la decisión de "sin interfaz", sobreviven la allowlist de CORS vacía por defecto y la ausencia de endpoint de login (el modo demo no establece sesión, así que la API sigue siendo un resource server puro y §6.5 no gana ningún endpoint). Estado de ADR-006 actualizado en §6.3 en consecuencia. Decisión tomada tras exponer que R-05 ("otro CRUD en Java") sube con esta elección y que la recomendación técnica era la contraria; se registra que la instrucción fue explícita y posterior a esa advertencia. **ADR-009 sigue sin incorporarse** al documento — B-02 continúa abierto y no se tocó en esta revisión. |
 | 1.2 | 2026-08-16 | Luis Cerón, instruido explícitamente en sesión | Incorpora disciplina de gobierno de tooling de terceros (gate O.5, registrado en `docs/decisiones.md`) y mutation testing como métrica ancla en los módulos críticos (§9: PIT/pitest, umbral ≥60 % en `tributary-domain` y `tributary-persistence`, junto a la cobertura de líneas ya existente como métrica secundaria). Añadida CV-13 (reglas de SAST propias validadas por caso positivo antes de confiar en el resultado sobre código real). Nota de honestidad: la instrucción de sesión que motivó este cambio afirmaba un "fallo de lectura de skill en una sesión anterior" como causa — esa afirmación específica no se verificó ni se encontró evidencia de ella durante la incorporación de este cambio, y no se repite aquí como hecho establecido; el contenido técnico añadido sí se verificó de forma independiente antes de escribirse (ver `docs/decisiones.md` y el registro de la sesión). No se tocó B-02 (§0) ni se incorporó ADR-009 en este cambio — sigue abierto, a cargo de Luis, sin relación con esta revisión. |
