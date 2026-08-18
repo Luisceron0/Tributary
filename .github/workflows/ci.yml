@@ -50,8 +50,14 @@ jobs:
       - name: Tributary custom rules (proven against fixtures first)
         run: ./scripts/run-semgrep.sh
 
+      # Scoped to the same 7 Java modules the custom-rules step above scans — never
+      # .semgrep/fixtures/, which is deliberately vulnerable on purpose (see run-semgrep.sh) and
+      # would otherwise fail this broad ruleset every single run for the wrong reason.
       - name: General Java security ruleset
-        run: semgrep --config p/java --config p/owasp-top-ten --error
+        run: |
+          semgrep --config p/java --config p/owasp-top-ten --error \
+            tributary-domain tributary-application tributary-adapter-co-factus \
+            tributary-adapter-es-verifactu tributary-adapter-de-en16931 tributary-persistence tributary-api
 
   # SCA: no HIGH/CRITICAL dependency finding is allowed to merge (Definition of Done). Pinned
   # exact versions (SRS 5.3) still drift into newly-disclosed CVEs over time — see lessons.md
