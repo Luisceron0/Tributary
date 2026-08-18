@@ -17,3 +17,4 @@ each of these originates; these are the English, standalone versions referenced 
 | [008](ADR-008-kosit-validator.md) | XRechnung validation uses the official KoSIT validator |
 | [009](ADR-009-public-verification-endpoint.md) | One public route: record verification, narrow response body |
 | [010](ADR-010-web-frontend-demo-mode.md) | A web frontend, in demo authentication mode (supersedes 006 in part) |
+| [011](ADR-011-infrastructure-ready-not-deployed.md) | Deployment infrastructure delivered complete, and left undeployed |

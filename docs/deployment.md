@@ -1,11 +1,26 @@
 # Deployment runbook — Milestone 2 (§10.5)
 
-Everything in `deploy/` and `docker-compose.prod.yml` is built and verified locally (see
-"What was verified" below). What's left needs your Oracle Cloud account, your domain choice, and
-your Factus dashboard — things this session structurally cannot act on. This document is the
-exact sequence to close them.
+> **This stack is not currently deployed anywhere, by decision — see
+> [ADR-011](adr/ADR-011-infrastructure-ready-not-deployed.md).** Everything below is built and
+> verified locally (see "What was verified" at the end) and written to be executed, not to be read
+> as history. Nothing in `deploy/` or `docker-compose.prod.yml` is provider-specific: section 1 is
+> the only part that changes if you use a host other than Oracle.
 
-## 1. Oracle Cloud: create the VM (your action)
+## 0. Choosing a host
+
+The stack needs one thing: **a VM with Docker and inbound ports 80/443**. Three containers —
+Caddy, the Spring Boot API, PostgreSQL. Verified state as of August 2026:
+
+| Host | Free? | Fits? | The catch |
+|---|---|---|---|
+| **Oracle Cloud** Ampere A1 | Indefinite | Comfortably (2 OCPU / 12 GB) | Allowance halved in June 2026 with no announcement; `Out of host capacity` is a standing condition in many regions. Prefer a region with 3 availability domains. |
+| **Google Cloud** `e2-micro` | Indefinite | Tightly (1 GB RAM) | `us-west1`/`us-central1`/`us-east1` only. Needs JVM `-Xmx` (~350–400 MB) and PostgreSQL `shared_buffers` tuned down to fit. |
+| **AWS** EC2 | No, for new accounts | — | Accounts created after 15 July 2025 get time-boxed credits, not 12 free months. |
+| **Render / Railway / Koyeb** | Partly | No | PaaS, not VMs: this compose topology (fixed-subnet bridge for deterministic proxy trust) has no equivalent. Free tiers sleep, expire, or no longer include compute. |
+
+Sections 2–6 are identical whichever VM you pick.
+
+## 1. Oracle Cloud: create the VM (your action — substitute your own host here)
 
 1. Sign up at [cloud.oracle.com](https://cloud.oracle.com) if you don't have an account (requires
    identity verification and a card for verification only — the Always Free tier itself is not
@@ -79,6 +94,12 @@ confirmed by grep before writing this document, not assumed. There is no Factus 
 this deployment to rotate. If you later deploy the CO regime publicly, revisit this.
 
 ## 6. T-905 — run the offensive verification against the real public instance
+
+**Status: not executed.** This is the one verification in the project that structurally requires a
+public instance, and there is none ([ADR-011](adr/ADR-011-infrastructure-ready-not-deployed.md)).
+It is recorded as not executed rather than passed — running it against `localhost` and calling it
+§9B would be asserting something that did not happen. The steps below are what to do when and if a
+public instance exists.
 
 Once the domain resolves over HTTPS, repeat T-702/T-708 against it instead of localhost —
 `sqlmap`, the `alg:none`/HS256-confusion probes, and the CV-02/CV-03 tamper sequence all still

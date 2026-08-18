@@ -93,6 +93,22 @@ The API client is **generated** from [`docs/openapi.json`](docs/openapi.json), s
 drifts from what the interface consumes fails the build — CI regenerates it and rejects any
 difference.
 
+### There is no public demo URL
+
+Deliberately — see [ADR-011](docs/adr/ADR-011-infrastructure-ready-not-deployed.md). The full
+production stack (Caddy with automatic TLS, systemd units, scheduled key rotation, the
+trusted-proxy boundary) is built and verified, and lives in [`deploy/`](deploy/) and
+[`docker-compose.prod.yml`](docker-compose.prod.yml); it is simply not running anywhere.
+
+The short version: every free tier that fits this topology either shrank without notice, sleeps
+between requests, or is a PaaS that cannot express it. A demo that is down, cold-starting, or
+rate-limited when a reviewer opens it is worse than a repository that is honest about not having
+one. [`docs/deployment.md`](docs/deployment.md) is written to be executed on any VM with Docker
+and ports 80/443, and section 0 compares the hosts.
+
+The one consequence recorded rather than papered over: **SRS §9B's offensive protocol against a
+public instance (T-905) was not executed**, because it structurally cannot be without one.
+
 ## Quickstart
 
 ```bash

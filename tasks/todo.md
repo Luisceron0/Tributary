@@ -602,7 +602,9 @@ para evitar."*
   - Barrido sistemático (correos, teléfonos, identificadores fiscales) sobre `*.json`, `*.java`, `*.sql`, `*.tsx`, `*.sh`, no solo sobre el archivo de ejemplo obvio
   - **Hallazgo real:** `buyer@handel.de` usaba un dominio **realmente registrable**, mientras el otro correo del proyecto ya usaba correctamente el TLD reservado `.invalid` (RFC 2606). Esa inconsistencia es exactamente el riesgo del incidente documentado con `sqlmap` (≈200 correos de prueba entregados a buzones reales). Corregido a `buyer@handel.invalid` en los 5 sitios; los tests de los dos módulos afectados siguen verdes (52/52)
   - Sin teléfonos reales. Identificadores fiscales todos con patrón claramente sintético (`ESB12345678`, `DE123456789`, `DE111111111`…)
-- [ ] **T-905** §9B íntegro contra la instancia **pública**, no la local
+- [!] **T-905** §9B íntegro contra la instancia **pública**, no la local
+  - **No ejecutada, y registrada como tal — no como aprobada.** Es la única verificación del proyecto que requiere estructuralmente una instancia pública, y por [ADR-011](../docs/adr/ADR-011-infrastructure-ready-not-deployed.md) no la hay. Correrla contra `localhost` y llamarla §9B sería afirmar algo que no ocurrió, justo lo que nueve fases se dedicaron a no hacer
+  - Los pasos quedan escritos en `docs/deployment.md` §6 para cuando exista una instancia
 - [x] **T-906** Infraestructura de despliegue y reset programado de la base demo
   - `docker-compose.prod.yml`: Caddy (borde) + `api` + `postgres`, red `edge` con **subred fija** (172.28.0.0/24) para que la dirección de Caddy sea determinística — es el único valor que `TRIBUTARY_TRUSTED_PROXIES` necesita confiar (T-901). `api` y `postgres` **sin `ports:` publicados**: inalcanzables desde fuera del contenedor de Caddy, por topología de red, no por regla
   - `deploy/Dockerfile.edge`: build multi-stage, construye el frontend **y** sirve con Caddy en una sola imagen. Tokens demo inyectados como build args — `ADMIN` deliberadamente nunca pasado
