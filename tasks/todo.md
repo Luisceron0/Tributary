@@ -644,6 +644,27 @@ Pedida explícitamente sobre **todas** las partes del proyecto, con énfasis en 
 - [x] **F7** `RateLimitFilter` estaba acotado solo por una purga por inactividad de 10 minutos, saltada además por debajo de 1024 entradas. Ninguna de las dos condiciones acota el mapa bajo **rotación de direcciones**: cada bucket está recién visto, nada es purgable, y el mapa crece con el pool de IPs del atacante. El límite por IP corre **antes** de la autenticación por diseño, así que alcanzarlo no cuesta credenciales. Techo duro (`MAX_TRACKED_KEYS`) con desalojo del menos visto recientemente
   - `RateLimitFilterMemoryTest`, 2 tests, incluido el de no-regresión (acotar el mapa no debilita el límite para un llamador activo)
 
+### Adaptador DE / EN16931 — un hallazgo real
+
+- [x] **F8** Nada rechazaba una línea con `quantity=0` y `lineDiscount` distinto de cero. `Quantity` prohíbe negativos pero no cero — `isZero()` sugiere que es un estado legítimo (una muestra gratuita). `CiiInvoiceMapper` convierte el descuento total del dominio en una cifra por unidad para el esquema CII dividiendo entre la cantidad: con cantidad cero, división real entre cero
+  - **Probado empíricamente antes de decidir dónde corregir**, no asumido: un probe standalone contra `CiiInvoiceMapper.toXml()` con una línea `quantity=0, lineDiscount=5.00` produjo `ArithmeticException: / by zero`, sin capturar por `InvoiceController.renderXRechnung` (que solo atrapa `IllegalArgumentException`) — propagándose como 500 no documentado en vez del 422 que el propio endpoint declara
+  - **Corregido en el dominio, no en el adaptador**: un descuento total sobre cero unidades es conceptualmente vacío bajo cualquier régimen, no un problema específico de CII — `InvoiceLine`'s constructor compacto ahora lo rechaza en construcción, protegiendo también los caminos CO/ES que no habrían crasheado pero habrían persistido un registro sin sentido
+  - `InvoiceLineZeroQuantityTest`, 3 tests (dominio). Rojo confirmado antes de corregir. Suite completa de `tributary-domain`/`tributary-adapter-de-en16931`/`tributary-application`/`tributary-api` sin regresiones tras el cambio (`mvn test -am`, verde)
+
+### Módulo `tributary-web` — auditado, sin defecto
+
+- [x] Revisión línea por línea de los ocho archivos fuente (`api/client.ts`, `App.tsx`, los cuatro componentes, `main.tsx`, `vite-env.d.ts`), no solo dependencias y tipos. Cero usos de `dangerouslySetInnerHTML`, `eval`, `innerHTML` o `document.write` — todo el renderizado pasa por JSX, que escapa por defecto
+  - `npm audit` → 0 vulnerabilidades. `tsc --noEmit` → limpio. `oxlint` → 0 hallazgos
+  - **Verificación del contrato real, no solo leída:** tras los 8 hallazgos de esta auditoría en el backend, se regeneró `docs/openapi.json` (`scripts/export-openapi.sh`) y `tributary-web/src/api/schema.d.ts` (`npm run generate:api`) desde cero contra el backend corregido → **diff vacío en ambos archivos**, y `tsc -b` limpio. Ninguno de los 8 hallazgos tocó la forma de una respuesta HTTP — el control T-801 (el contrato como propiedad verificada, no documentación) sigue cumpliendo su función
+
+### Auditoría del sistema integrado — evidencia real contra el stack Docker completo
+
+- [x] `docker compose up --build` de punta a punta con `scripts/demo/setup.sh --with-admin`, no simulado
+  - Flujo completo de los 8 endpoints con roles reales: registrar (OPERATOR, `201`) → emitir régimen ES (OPERATOR, `202 ISSUED`) → leer (AUDITOR, `200`) → **renderizar XRechnung del mismo documento** (endpoint del adaptador DE, `200`, cruce real entre los tres módulos) → verificar cadena (AUDITOR, `INTACT`) → verificación pública sin token (`200`, con el aviso de no-remisión correcto) → intento de borrado GDPR con token OPERATOR (`403`, RBAC negando correctamente entre roles)
+  - **Prueba de inmutabilidad más fuerte que la documentada hasta ahora:** un `UPDATE` directo contra `fiscal_record` vía `psql`, con el rol que la propia aplicación usa en producción, fue rechazado por el trigger de PostgreSQL (`fiscal_record is immutable`) — no solo simulado a nivel de test, sino contra el mismo rol operacional del stack real
+  - Cabeceras de seguridad confirmadas en una respuesta real (`X-Content-Type-Options`, `Content-Security-Policy`, `Referrer-Policy`); `HostAllowlistFilter` confirmado rechazando un `Host` no declarado con `400` real
+  - Limpieza completa tras la verificación: `docker compose down -v`, `.env`/`.demo`/`tributary-web/.env.local` eliminados (nunca commiteados, gitignorados desde T-001)
+
 ### Adaptador ES / Verifactu — auditado, sin defecto explotable
 
 - [x] **Canonicalización con delimitadores sin escapar** — revisado a fondo y **descartado como vulnerabilidad**, no omitido. La forma canónica es `CAMPO=valor|CAMPO=valor` y los valores se interpolan sin escapar los delimitadores; dos de ellos son texto libre que llega por HTTP (`reason` de la corrección, NIF del comprador). Es el patrón clásico de colisión por inyección de delimitador

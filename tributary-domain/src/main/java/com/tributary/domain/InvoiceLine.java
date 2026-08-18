@@ -40,6 +40,16 @@ public record InvoiceLine(
     if (lineDiscount.isNegative()) {
       throw new IllegalArgumentException("lineDiscount must not be negative: " + lineDiscount);
     }
+    // Audit finding: a discount stated as a line total is meaningless on zero units — there is no
+    // per-unit price it is ever "off". CiiInvoiceMapper (T-503) took that meaninglessness literally,
+    // dividing the discount by quantity to fit CII's per-unit schema, and crashed with an unhandled
+    // ArithmeticException on a zero-quantity discounted line. Rejected here rather than in that one
+    // adapter: it is not a real invoice line under any regime, not a CII-specific problem.
+    if (quantity.isZero() && !lineDiscount.isZero()) {
+      throw new IllegalArgumentException(
+          "lineDiscount must be zero when quantity is zero — a discount cannot apply to zero units: "
+              + lineDiscount);
+    }
   }
 
   public static InvoiceLine standardRate(

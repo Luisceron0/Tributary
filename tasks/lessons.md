@@ -477,3 +477,17 @@ Aplica directamente a lo que viene: la huella SHA-256 de T-400/T-401 tiene el mi
 **Regla derivada:** toda propiedad que un comentario afirme sobre el comportamiento en ejecución — "compartido", "acotado", "fail-closed" — necesita un test que falle si deja de ser cierta. Si la propiedad no es testeable como está escrita, el comentario se reescribe para decir lo que sí se verifica.
 
 **Cómo sabríamos que la regla falló:** un comentario que describa una garantía de runtime sin un test que la nombre. Señal temprana: al intentar escribir ese test, descubrir que hace falta exponer estado interno para observarla — como pasó con `trackedKeyCount()`.
+
+---
+
+## L-034 · Un discount total no tiene sentido sobre cantidad cero, y solo un adaptador lo notó — con una excepción sin capturar
+
+**Fecha:** 2026-08-18 · **Origen:** hallazgo (auditoría exhaustiva, adaptador DE/EN16931)
+
+**Qué pasó:** nada en el dominio ni en la capa de API rechazaba una línea con `quantity=0` y `lineDiscount` distinto de cero. `Quantity` prohíbe negativos pero no cero (y `isZero()` sugiere que cero es un estado legítimo — una muestra gratuita, por ejemplo). `CiiInvoiceMapper` convierte el descuento total en una cifra por unidad para el esquema CII dividiendo entre la cantidad; con cantidad cero, eso es una división entre cero real. Probado empíricamente: `ArithmeticException: / by zero`, sin capturar por el controlador (que solo atrapa `IllegalArgumentException`), propagándose como un 500 no documentado en `GET /renderings/xrechnung` en vez del 422 que el propio endpoint declara.
+
+**Por qué importa:** el error no es específico de CII. Un descuento total sobre cero unidades es conceptualmente vacío bajo cualquier régimen — no hay precio unitario del cual estar "descontando" nada — así que el defecto real era que la regla no vivía en el dominio, sino que un adaptador se topó con la consecuencia aritmética de una invariante que nadie había declarado.
+
+**Regla derivada:** una invariante que es verdadera para el problema de negocio (no solo para un formato de salida concreto) se declara en el dominio, no en el primer adaptador que tropieza con su ausencia. Si dos regímenes pudieran haber tropezado con la misma laguna de formas distintas, la corrección pertenece un nivel más arriba de donde se descubrió.
+
+**Cómo sabríamos que la regla falló:** una excepción no documentada (`ArithmeticException`, `NullPointerException`, etc.) propagándose desde cualquier mapeador de régimen hacia un controlador que solo declara manejar `IllegalArgumentException`.
