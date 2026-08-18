@@ -1,5 +1,14 @@
 # Tributary
 
+[![CI](https://github.com/Luisceron0/Tributary/actions/workflows/ci.yml/badge.svg)](https://github.com/Luisceron0/Tributary/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
+**A multi-regime e-invoicing engine that treats "this fiscal document cannot be altered" as a
+database guarantee, not an application promise.**
+
+Reference implementation · Colombia (Factus/DIAN) · Spain (Verifactu) · Germany (XRechnung) ·
+hexagonal architecture, 303 automated tests, thirteen independently verified security controls.
+
 A cross-border B2B sale creates simultaneous tax obligations in jurisdictions whose technical
 models are incompatible: Colombia clears invoices before they legally exist, Spain requires a
 hash-chained invoicing record, Germany requires a structured document handed to the buyer.
@@ -9,7 +18,8 @@ The thesis: a fiscal document is an immutable fact, correctable only by a later 
 references it — and that invariant belongs in the layer no application path can bypass. In this
 system that layer is PostgreSQL, not Java ([ADR-002](docs/adr/ADR-002-chain-integrity-in-postgresql.md)).
 
-That isn't a design intention; it's live, running behavior:
+That isn't a design intention; it's live, running behavior — try it yourself in the
+[quickstart](#quickstart) below, or read the proof first:
 
 ### Tamper evidence (CV-02 / CV-03)
 
@@ -54,6 +64,10 @@ The same verification through the web interface, driven in a real browser agains
 stack:
 
 ![Chain verification reporting BROKEN, naming the exact record whose stored hash no longer matches the recomputed one](docs/evidence/chain-broken.png)
+
+**Contents:** [Scope and honesty](#scope-and-honesty) · [Interface](#interface) ·
+[Quickstart](#quickstart) · [Architecture](#architecture) · [Security](#security) ·
+[API contract](#api-contract) · [Dependencies](#dependencies) · [Documentation](#documentation)
 
 ## Scope and honesty
 
