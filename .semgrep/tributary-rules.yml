@@ -16,8 +16,7 @@ rules:
     severity: ERROR
     message: >
       Raw XML parser factory instantiation bypasses SecureXmlFactory's XXE/DTD hardening
-      (T-500 — the highest-severity input surface per project convention, see
-      .github/copilot-instructions.md). Use
+      (T-500 — the highest-severity input surface per project convention). Use
       com.tributary.adapter.de.SecureXmlFactory instead of instantiating a
       DocumentBuilderFactory/SAXParserFactory/XMLInputFactory/TransformerFactory directly.
     patterns:

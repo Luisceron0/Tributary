@@ -1,7 +1,7 @@
 # Every value that varies by environment comes from an env var, never a literal default baked in
-# here for anything credential-shaped (SRS 5.3 / .github/copilot-instructions.md's "Secrets"
-# section) — spring.datasource.* and tributary.security.jwt.public-key have NO default: a missing
-# one fails the app at startup, not with a silently-empty value.
+# here for anything credential-shaped (SRS 5.3) — spring.datasource.* and
+# tributary.security.jwt.public-key have NO default: a missing one fails the app at startup,
+# not with a silently-empty value.
 
 spring:
   application:
