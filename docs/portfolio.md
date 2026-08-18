@@ -43,8 +43,10 @@ verifier, which names the exact broken row.
 | Supply chain | The one external validator this project trusts (Germany's official KoSIT tool) is checksum-pinned; a mismatch aborts the build before the artifact is ever unpacked |
 | CI | Four independent gates on every push: full test suite + architecture rules, SAST, dependency scanning (blocking on HIGH/CRITICAL), secret scanning across full history |
 
-Twelve controls in total, each with a tool, a command, and a binary pass/fail criterion — the
+Thirteen controls in total, each with a tool, a command, and a binary pass/fail criterion — the
 full matrix is §9A of the [SRS](SRS-tributary.md#9a-matriz-de-verificación-de-controles).
+
+![Chain verification reporting BROKEN, naming the exact record whose stored hash no longer matches the recomputed one](evidence/chain-broken.png)
 
 ## Engineering decisions that mattered
 
@@ -65,6 +67,16 @@ full matrix is §9A of the [SRS](SRS-tributary.md#9a-matriz-de-verificación-de-
   something that didn't happen. [ADR-005](adr/ADR-005-es-adapter-does-not-remit.md) /
   [ADR-007](adr/ADR-007-es-qr-points-to-self.md)
 
+## Interface
+
+A React frontend ([ADR-010](adr/ADR-010-web-frontend-demo-mode.md)) covers all eight endpoints,
+one panel per role, with no login — pre-minted demo tokens instead, disclosed as such on the page
+itself. The public build ships **no administrator credential**, and that's a cryptographic fact,
+not a UI restriction: tokens are RS256-signed, so reading the operator/auditor tokens in the page
+source cannot mint an admin one without the private key, which never leaves the build environment.
+
+![The administrator panel explaining that this deployment carries no administrator credential, and why that is a cryptographic guarantee rather than a UI restriction](evidence/admin-unavailable.png)
+
 ## Scope, stated plainly
 
 Not certified under any fiscal regime. Not for production issuance. Colombia issues real sandbox
@@ -75,6 +87,7 @@ transport over Peppol. Full detail in the [README](../README.md#scope-and-honest
 
 Java 21 · Spring Boot (API/persistence layer only — the domain has zero framework dependency,
 enforced by ArchUnit) · PostgreSQL 16 · Flyway · Testcontainers · jqwik (property-based testing)
+· React 19 · TypeScript · Vite (API client generated from the OpenAPI contract, never hand-written)
 · Docker Compose · GitHub Actions.
 
 **[Full README →](../README.md) · [Architecture decisions →](adr/) · [Try it in under 3 minutes →](../README.md#quickstart)**
