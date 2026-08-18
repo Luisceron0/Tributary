@@ -27,9 +27,11 @@ public final class FactusFiscalRegimeAdapter implements FiscalRegimePort {
     this.credentials = Objects.requireNonNull(credentials, "credentials must not be null");
     FactusAuthGateway authGateway = new FactusAuthGateway();
     this.oauth2Client = new FactusOAuth2Client(() -> authGateway.fetchToken(credentials), Instant::now);
+    // One limiter instance, genuinely shared: Factus's quota is per account, so issuance and
+    // reconciliation queries draw from the same 60/min budget (T-301, threat T-010).
     FactusRateLimiter rateLimiter = new FactusRateLimiter(60, Duration.ofSeconds(60));
     this.billGateway = new FactusBillGateway(rateLimiter);
-    this.queryGateway = new FactusQueryGateway();
+    this.queryGateway = new FactusQueryGateway(rateLimiter);
     this.payloadMapper = new FactusPayloadMapper(numberingRangeId);
   }
 

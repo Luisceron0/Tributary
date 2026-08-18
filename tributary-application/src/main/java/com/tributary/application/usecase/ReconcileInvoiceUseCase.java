@@ -57,7 +57,7 @@ public final class ReconcileInvoiceUseCase {
 
     return switch (queryResult.outcome()) {
       case FOUND_VALIDATED -> adopt(invoice, queryResult);
-      case FOUND_REJECTED -> confirmRejected(invoice);
+      case FOUND_REJECTED -> confirmRejected(invoice, queryResult);
       case NOT_FOUND -> retryIssuance(invoice);
       case AMBIGUOUS -> handleAmbiguous(invoice, consecutiveAmbiguousSoFar);
     };
@@ -77,11 +77,16 @@ public final class ReconcileInvoiceUseCase {
     return new ReconcileInvoiceResult.Adopted(updated);
   }
 
-  private ReconcileInvoiceResult confirmRejected(Invoice invoice) {
+  private ReconcileInvoiceResult confirmRejected(Invoice invoice, RegimeQueryResult queryResult) {
+    // The reasons the regime gave are the whole value of this record: REJECTED is terminal, so this
+    // attempt row is the last thing ever written about the document. Recording it with an empty
+    // message list — as this did before an audit caught it — leaves an operator with a permanently
+    // dead invoice and no statement of why (RF-002: the regime's messages are never discarded).
     issuanceAttemptPort.record(
         invoice.businessKey(),
         regime,
-        new IssuanceResult(IssuanceOutcome.REJECTED, java.util.Optional.empty(), java.util.List.of(), "reconciled: confirmed rejected"));
+        new IssuanceResult(
+            IssuanceOutcome.REJECTED, java.util.Optional.empty(), queryResult.warnings(), "reconciled: confirmed rejected"));
     Invoice updated = invoice.transitionTo(DocumentState.REJECTED);
     invoiceRepository.save(updated);
     return new ReconcileInvoiceResult.ConfirmedRejected(updated);

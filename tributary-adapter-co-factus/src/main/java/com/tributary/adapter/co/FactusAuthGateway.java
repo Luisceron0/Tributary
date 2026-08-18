@@ -88,14 +88,21 @@ final class FactusAuthGateway {
     }
 
     JsonNode accessToken = json.get("access_token");
-    JsonNode refreshToken = json.get("refresh_token");
     JsonNode expiresIn = json.get("expires_in");
-    if (accessToken == null || refreshToken == null || expiresIn == null) {
+    if (accessToken == null || expiresIn == null) {
       throw new FactusAuthenticationException(
-          "Factus token response is missing access_token, refresh_token or expires_in");
+          "Factus token response is missing access_token or expires_in");
     }
 
+    // Audit finding: refresh_token used to be mandatory here while never being exchanged for
+    // anything — FactusOAuth2Client renews by repeating the password grant. Requiring a field the
+    // client does not use is a self-inflicted outage: the day Factus stops returning it (it is
+    // optional in most OAuth2 configurations), authentication would have failed outright for a
+    // reason unrelated to anything this code needs. Captured when present, tolerated when absent.
+    JsonNode refreshToken = json.get("refresh_token");
+    String refreshTokenValue = refreshToken == null ? "" : refreshToken.asText();
+
     return new FactusToken(
-        accessToken.asText(), refreshToken.asText(), fetchedAt.plusSeconds(expiresIn.asLong()));
+        accessToken.asText(), refreshTokenValue, fetchedAt.plusSeconds(expiresIn.asLong()));
   }
 }

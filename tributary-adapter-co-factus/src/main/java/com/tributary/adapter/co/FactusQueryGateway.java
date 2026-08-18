@@ -41,14 +41,16 @@ final class FactusQueryGateway {
 
   private final HttpClient httpClient;
   private final ObjectMapper objectMapper;
+  private final FactusRateLimiter rateLimiter;
 
-  FactusQueryGateway() {
-    this(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(), new ObjectMapper());
+  FactusQueryGateway(FactusRateLimiter rateLimiter) {
+    this(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(), new ObjectMapper(), rateLimiter);
   }
 
-  FactusQueryGateway(HttpClient httpClient, ObjectMapper objectMapper) {
+  FactusQueryGateway(HttpClient httpClient, ObjectMapper objectMapper, FactusRateLimiter rateLimiter) {
     this.httpClient = Objects.requireNonNull(httpClient, "httpClient must not be null");
     this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
+    this.rateLimiter = Objects.requireNonNull(rateLimiter, "rateLimiter must not be null");
   }
 
   RegimeQueryResult query(FactusCredentials credentials, FactusToken token, String businessKey) {
@@ -65,6 +67,12 @@ final class FactusQueryGateway {
             .header("Accept", "application/json")
             .GET()
             .build();
+
+    // Audit finding: queries used to bypass the limiter entirely, while the adapter's own javadoc
+    // claimed it was "shared across issue/query calls". Factus's quota is per ACCOUNT, and RF-008's
+    // reconciler is precisely the component that issues many queries in a sweep — so an unlimited
+    // query path could exhaust the quota and block real issuances, which is threat T-010 verbatim.
+    rateLimiter.acquire();
 
     HttpResponse<String> response;
     try {
@@ -97,11 +105,27 @@ final class FactusQueryGateway {
 
     JsonNode match = matches.get(0);
     boolean isValidated = match.path("is_validated").asBoolean(false);
+    // Audit finding: this field used to be dropped on the floor here, while the issuance path read
+    // it. Two consequences, both silent — a confirmed rejection reached the operator with no reason
+    // attached, and ReconcileInvoiceUseCase.adopt() (which already branches on this list) recorded
+    // a document DIAN accepted WITH warnings as a clean ISSUED. RF-002: the warnings are recorded
+    // and never discarded, on whichever path observes them.
+    List<String> messages = FactusErrorMessages.from(match.get("errors"));
+
     if (!isValidated) {
-      return new RegimeQueryResult(QueryOutcome.FOUND_REJECTED, Optional.empty(), List.of());
+      // Audit finding: a bare "not validated" is not a verdict. The list endpoint reports
+      // is_validated=false for a bill that is not validated YET as readily as for one DIAN refused,
+      // and reconciliation runs exactly when the original response was lost — when a document is
+      // most likely still in flight. FOUND_REJECTED is terminal downstream (DocumentState.REJECTED
+      // has an empty transition set), so claiming it without the errors that evidence it would make
+      // an unreadable state permanent. ADR-003: an ambiguous state never becomes a definitive one.
+      if (messages.isEmpty()) {
+        return new RegimeQueryResult(QueryOutcome.AMBIGUOUS, Optional.empty(), List.of());
+      }
+      return new RegimeQueryResult(QueryOutcome.FOUND_REJECTED, Optional.empty(), messages);
     }
     // "number", not "cufe" — see class-level note.
     Optional<String> number = match.hasNonNull("number") ? Optional.of(match.get("number").asText()) : Optional.empty();
-    return new RegimeQueryResult(QueryOutcome.FOUND_VALIDATED, number, List.of());
+    return new RegimeQueryResult(QueryOutcome.FOUND_VALIDATED, number, messages);
   }
 }

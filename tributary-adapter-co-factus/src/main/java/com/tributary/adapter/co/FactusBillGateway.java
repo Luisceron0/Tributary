@@ -11,10 +11,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
@@ -133,6 +130,20 @@ public final class FactusBillGateway {
           IssuanceOutcome.UNREACHABLE, Optional.empty(), List.of(), "HTTP 429 after exhausting retries");
     }
 
+    // Only a 2xx response carries a DIAN verdict. Anything else — 401 from an expired token, 5xx
+    // from Factus, 502 from something in front of it — is a TRANSPORT failure, and mapping it to
+    // REJECTED would be irreversible: DocumentState.REJECTED has an empty transition set, so an
+    // invoice DIAN never even saw would be permanently recorded as one DIAN refused. ADR-003's
+    // whole point is that an ambiguous failure must never become a definitive verdict; UNREACHABLE
+    // routes to NEEDS_RECONCILIATION, which forces a query before any retry.
+    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+      return new IssuanceResult(
+          IssuanceOutcome.UNREACHABLE,
+          Optional.empty(),
+          List.of(),
+          "HTTP " + response.statusCode() + ": " + response.body());
+    }
+
     JsonNode json;
     try {
       json = objectMapper.readTree(response.body());
@@ -148,7 +159,7 @@ public final class FactusBillGateway {
     }
 
     boolean isValidated = data.path("is_validated").asBoolean(false);
-    List<String> messages = extractErrorMessages(data.get("errors"));
+    List<String> messages = FactusErrorMessages.from(data.get("errors"));
     Optional<String> cufe = data.hasNonNull("cufe") ? Optional.of(data.get("cufe").asText()) : Optional.empty();
 
     IssuanceOutcome outcome;
@@ -161,20 +172,6 @@ public final class FactusBillGateway {
     }
 
     return new IssuanceResult(outcome, isValidated ? cufe : Optional.empty(), messages, response.body());
-  }
-
-  /** {@code data.errors} is an OBJECT keyed by DIAN rule id ({"RUT01": "...", "FAJ44b": "..."}), not an array. */
-  private static List<String> extractErrorMessages(JsonNode errorsNode) {
-    if (errorsNode == null || !errorsNode.isObject() || errorsNode.isEmpty()) {
-      return List.of();
-    }
-    List<String> messages = new ArrayList<>();
-    Iterator<Map.Entry<String, JsonNode>> fields = errorsNode.fields();
-    while (fields.hasNext()) {
-      Map.Entry<String, JsonNode> entry = fields.next();
-      messages.add(entry.getKey() + ": " + entry.getValue().asText());
-    }
-    return List.copyOf(messages);
   }
 
   private IssuanceResult unreachable(Exception cause) {

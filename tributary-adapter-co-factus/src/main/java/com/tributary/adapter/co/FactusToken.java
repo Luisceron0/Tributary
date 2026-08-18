@@ -12,7 +12,17 @@ public record FactusToken(String accessToken, String refreshToken, Instant expir
     Objects.requireNonNull(expiresAt, "expiresAt must not be null");
   }
 
+  /**
+   * Audit finding: treated as expired {@value #EXPIRY_SKEW_SECONDS}s early on purpose. Without a
+   * margin, a token that passes this check with milliseconds left is still in flight when it
+   * expires, and Factus answers 401 — which the caller cannot distinguish from a real problem and
+   * which, before the accompanying gateway fix, was mapped to the irreversible REJECTED state.
+   * The cost of refreshing slightly early is one extra token call; the cost of refreshing slightly
+   * late is an issuance that fails for no reason the operator can see.
+   */
   boolean isExpired(Instant now) {
-    return !now.isBefore(expiresAt);
+    return !now.isBefore(expiresAt.minusSeconds(EXPIRY_SKEW_SECONDS));
   }
+
+  private static final long EXPIRY_SKEW_SECONDS = 60;
 }

@@ -35,7 +35,7 @@ class FactusQueryGatewayContractTest {
   @BeforeEach
   void setUp() {
     credentials = new FactusCredentials(wireMock.baseUrl(), "id", "secret", "user", "pass");
-    gateway = new FactusQueryGateway();
+    gateway = new FactusQueryGateway(new FactusRateLimiter(60, java.time.Duration.ofSeconds(60)));
     wireMock.resetAll();
   }
 

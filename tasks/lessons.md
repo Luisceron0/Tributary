@@ -449,3 +449,31 @@ Aplica directamente a lo que viene: la huella SHA-256 de T-400/T-401 tiene el mi
 **Regla derivada:** un módulo que importa un BOM externo re-fija en su propio `dependencyManagement` **toda** versión que sus dependencias fijan, no solo las que ya causaron un incidente — el BOM gestiona un catálogo entero, no las tres cosas que uno recuerda. Y la verificación de una versión resuelta se hace desde el módulo que se **empaqueta y despliega**, no desde el que declara el pin: `mvn dependency:tree -pl tributary-api` es la fuente de verdad, `-pl tributary-persistence` es una opinión local. El SCA corriendo sobre el repo entero (T-704/T-805) es lo que convierte esto en detectable en vez de teórico — fue trivy, no una revisión de poms, lo que lo encontró las dos últimas veces.
 
 **Cómo sabríamos que la regla falló:** `mvn dependency:tree` da versiones distintas para la misma dependencia según el `-pl` elegido. Chequeo concreto y barato: comparar la versión resuelta en el módulo empaquetable contra la fijada en el módulo que la declara, para cada dependencia con pin explícito.
+
+---
+
+## L-032 · Una respuesta HTTP no es un veredicto — dos gateways leyeron el mismo campo con criterios distintos y solo uno estaba bien
+
+**Fecha:** 2026-08-18 · **Origen:** hallazgo (auditoría exhaustiva de la fase 9)
+
+**Qué pasó:** la auditoría del adaptador Factus encontró cuatro defectos en la ruta de emisión y dos más en la de consulta. El patrón común no era un error de codificación sino uno de interpretación: tratar la presencia de una respuesta como la presencia de un dictamen. `FactusBillGateway` mapeaba cualquier status distinto de `429` — un `401` por token vencido, un `502` de un proxy intermedio — a un veredicto de la DIAN, parseando el cuerpo como si lo fuera. `FactusQueryGateway` hacía lo equivalente con `is_validated:false`, que el endpoint de listado devuelve tanto para un documento rechazado como para uno **todavía no validado**.
+
+**Por qué importa:** `DocumentState.REJECTED` tiene el conjunto de transiciones vacío. Un documento escrito ahí está terminado: no hay corrección, ni reintento, ni acción de operador que lo mueva. Ambos defectos convertían un fallo de transporte o un estado en vuelo en un rechazo fiscal permanente. Y la reconciliación es precisamente el momento donde esto es más probable, porque solo corre cuando la respuesta original se perdió — el instante en que un documento tiene más chances de seguir en proceso.
+
+**Regla derivada:** un veredicto de la autoridad se afirma solo con evidencia positiva de que la autoridad se pronunció. Para el status HTTP: solo un `2xx` transporta un dictamen; todo lo demás es `UNREACHABLE`. Para el cuerpo: `is_validated:false` sin `errors` poblado no es un rechazo, es `AMBIGUOUS`. Cuando dos rutas leen el mismo campo del mismo proveedor, lo leen con el mismo código (`FactusErrorMessages`), no con dos implementaciones que puedan divergir en silencio.
+
+**Cómo sabríamos que la regla falló:** un `issuance_attempt` con `outcome=REJECTED` cuyo `raw_response` contenga un status distinto de `2xx`, o cuya lista de mensajes esté vacía. Los dos son imposibles ahora; si vuelven a aparecer, la regla se rompió.
+
+---
+
+## L-033 · El Javadoc afirmaba que el limitador era compartido, y no lo era — la documentación no es evidencia de sí misma
+
+**Fecha:** 2026-08-18 · **Origen:** hallazgo (auditoría exhaustiva de la fase 9)
+
+**Qué pasó:** `FactusFiscalRegimeAdapter` documentaba en su Javadoc de clase "the rate limiter shared across issue/query calls (T-301)". Era falso: `FactusQueryGateway` ni siquiera recibía el limitador, y la ruta de consulta no consumía cuota. La amenaza T-010 (agotamiento de cuota) estaba abierta exactamente en el componente que más consultas genera, el reconciliador de RF-008. Un caso análogo apareció en `RateLimitFilter`: su purga por inactividad se leía como una cota de memoria y no lo era — bajo rotación de direcciones ningún bucket está inactivo, así que el mapa crecía con el pool de IPs del atacante, sin autenticación de por medio.
+
+**Por qué importa:** las dos afirmaciones eran verosímiles, estaban escritas por quien implementó el código, y sobrevivieron a revisiones anteriores porque leer el comentario se siente como haber verificado la propiedad. Un control que se cree existente y no existe es peor que uno ausente y sabido: nadie lo busca.
+
+**Regla derivada:** toda propiedad que un comentario afirme sobre el comportamiento en ejecución — "compartido", "acotado", "fail-closed" — necesita un test que falle si deja de ser cierta. Si la propiedad no es testeable como está escrita, el comentario se reescribe para decir lo que sí se verifica.
+
+**Cómo sabríamos que la regla falló:** un comentario que describa una garantía de runtime sin un test que la nombre. Señal temprana: al intentar escribir ese test, descubrir que hace falta exponer estado interno para observarla — como pasó con `trackedKeyCount()`.

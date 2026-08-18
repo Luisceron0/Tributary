@@ -44,6 +44,17 @@ public final class RateLimitFilter extends OncePerRequestFilter {
 
   private static final Duration IDLE_EVICTION = Duration.ofMinutes(10);
 
+  /**
+   * Hard ceiling on distinct keys held at once. Audit finding: idle eviction alone does not bound
+   * this map — during a flood from rotating source addresses every bucket is freshly seen, so
+   * nothing is idle and nothing is collected, and the map grows with the attacker's address pool.
+   * The per-IP limit deliberately runs before authentication, so reaching it costs an attacker no
+   * credentials at all. With a ceiling, the map's size is a property of this configuration rather
+   * than of the traffic; the cost of the bound is that a very large legitimate client population
+   * evicts each other's buckets, which loses limiter accuracy but never availability.
+   */
+  static final int MAX_TRACKED_KEYS = 10_000;
+
   public RateLimitFilter(
       String limitName, int permitsPerMinute, Function<HttpServletRequest, Optional<String>> keyExtractor) {
     this.limitName = limitName;
@@ -63,8 +74,11 @@ public final class RateLimitFilter extends OncePerRequestFilter {
     }
 
     long now = System.currentTimeMillis();
-    evictIdle(now);
     Bucket bucket = buckets.computeIfAbsent(key.get(), unused -> new Bucket(permitsPerMinute, now));
+    // Swept after the insert, not before: sweeping first leaves room for exactly one more entry and
+    // the map settles one above the ceiling. The bucket just created is the most recently seen, so
+    // least-recently-seen eviction never discards the request currently being served.
+    evictIdle(now);
 
     if (!bucket.tryConsume(now, permitsPerMinute)) {
       response.setStatus(429);
@@ -81,6 +95,24 @@ public final class RateLimitFilter extends OncePerRequestFilter {
       return; // cheap guard: only sweep once the map is large enough to be worth it
     }
     buckets.entrySet().removeIf(entry -> now - entry.getValue().lastSeenMs() > IDLE_EVICTION.toMillis());
+
+    // Idle eviction is not a bound: under address rotation nothing is idle yet. Drop the
+    // least-recently-seen keys until the map is back under its ceiling, so memory use stays a
+    // function of configuration rather than of how many addresses a caller chooses to forge.
+    if (buckets.size() <= MAX_TRACKED_KEYS) {
+      return;
+    }
+    buckets.entrySet().stream()
+        .sorted(java.util.Comparator.comparingLong(entry -> entry.getValue().lastSeenMs()))
+        .limit(buckets.size() - (long) MAX_TRACKED_KEYS)
+        .map(Map.Entry::getKey)
+        .toList()
+        .forEach(buckets::remove);
+  }
+
+  /** Exposed for the memory-bound test — the map is otherwise entirely internal. */
+  int trackedKeyCount() {
+    return buckets.size();
   }
 
   /** Token bucket: smooths bursts instead of letting a fixed window be gamed at its boundary. */

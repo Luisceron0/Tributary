@@ -621,6 +621,42 @@ para evitar."*
 
 ---
 
+## Auditoría exhaustiva de cierre (2026-08-18)
+
+Pedida explícitamente sobre **todas** las partes del proyecto, con énfasis en el consumo real de la API de Factus, la seguridad y la funcionalidad. Seis defectos reales, todos con test que falla antes de la corrección.
+
+### Adaptador CO / Factus — seis hallazgos
+
+- [x] **F1** `refresh_token` era obligatorio en `FactusAuthGateway` y **nunca se usaba** (la renovación repite el password grant). Exigir un campo que el cliente no consume es una caída autoinfligida el día que Factus deje de enviarlo — es opcional en la mayoría de configuraciones OAuth2. Ahora se captura si está, se tolera si no
+  - Verificado en vivo: servidor Factus falso (Dockerizado) que **omite deliberadamente** `refresh_token` → autenticación correcta y emisión CO completa de punta a punta, CUFE real persistido en PostgreSQL (`regime=CO`, `outcome=ACCEPTED`)
+- [x] **F2** `FactusToken.isExpired` sin margen: un token que pasaba la comprobación con milisegundos de vida seguía en vuelo al expirar → `401`. Margen de 60 s (`EXPIRY_SKEW_SECONDS`)
+- [x] **F3** — el más grave — `toIssuanceResult` solo trataba especial el `429`. **Cualquier otro status se interpretaba como veredicto de la DIAN**: un `401` por token vencido o un `502` de un proxy intermedio se parseaban como rechazo. `DocumentState.REJECTED` tiene conjunto de transiciones vacío, así que una factura que la DIAN nunca vio quedaba registrada para siempre como rechazada. Ahora solo un `2xx` transporta veredicto; el resto es `UNREACHABLE` → `NEEDS_RECONCILIATION`
+  - `FactusBillGatewayHttpStatusTest`, 5 tests. Incluye los dos casos de no-regresión (un rechazo `201` genuino sigue siendo `REJECTED`, una aceptación `201` sigue devolviendo el CUFE) — la corrección no podía tragarse veredictos reales
+- [x] **F4** El limitador **no** era compartido con la ruta de consulta, mientras el Javadoc del adaptador afirmaba que sí. La cuota de Factus es por cuenta y el reconciliador de RF-008 es justo el componente que más consulta → amenaza T-010 abierta. `FactusQueryGateway` ahora exige `FactusRateLimiter` en el constructor y llama `acquire()`
+- [x] **F5** `is_validated:false` se mapeaba a `FOUND_REJECTED` → `DocumentState.REJECTED` **terminal**. Pero el endpoint de listado devuelve ese valor tanto para un documento rechazado como para uno **todavía no validado**, y la reconciliación corre precisamente cuando la respuesta original se perdió — el momento en que un documento tiene más probabilidad de seguir en proceso. Sin `errors` poblado no hay evidencia de veredicto: ahora es `AMBIGUOUS`, que enruta al camino de tres intentos → `MANUAL_REVIEW` en vez de a un estado irreversible
+- [x] **F6** `FactusQueryGateway` **descartaba `errors` por completo**. Dos consecuencias silenciosas: un rechazo confirmado llegaba al operador sin ninguna razón adjunta, y — como `ReconcileInvoiceUseCase.adopt()` **ya** ramificaba sobre `warnings()` — un documento que la DIAN aceptó *con* advertencias se registraba como `ISSUED` limpio en vez de `ISSUED_WITH_WARNINGS`. La misma factura terminaba en un estado distinto según si su respuesta HTTP original llegó o no. `FactusErrorMessages` extraído y compartido por ambos gateways, para que no puedan volver a divergir
+  - `FactusQueryGatewayVerdictTest`, 5 tests. Rojo verificado antes de corregir: 4 de 5 fallaban exactamente en los puntos descritos
+
+### `tributary-api` — un hallazgo
+
+- [x] **F7** `RateLimitFilter` estaba acotado solo por una purga por inactividad de 10 minutos, saltada además por debajo de 1024 entradas. Ninguna de las dos condiciones acota el mapa bajo **rotación de direcciones**: cada bucket está recién visto, nada es purgable, y el mapa crece con el pool de IPs del atacante. El límite por IP corre **antes** de la autenticación por diseño, así que alcanzarlo no cuesta credenciales. Techo duro (`MAX_TRACKED_KEYS`) con desalojo del menos visto recientemente
+  - `RateLimitFilterMemoryTest`, 2 tests, incluido el de no-regresión (acotar el mapa no debilita el límite para un llamador activo)
+
+### Adaptador ES / Verifactu — auditado, sin defecto explotable
+
+- [x] **Canonicalización con delimitadores sin escapar** — revisado a fondo y **descartado como vulnerabilidad**, no omitido. La forma canónica es `CAMPO=valor|CAMPO=valor` y los valores se interpolan sin escapar los delimitadores; dos de ellos son texto libre que llega por HTTP (`reason` de la corrección, NIF del comprador). Es el patrón clásico de colisión por inyección de delimitador
+  - **Intenté construir una colisión real y no lo conseguí**, y la razón es estructural, no suerte: el número y el orden de campos son fijos, así que inyectar un delimitador **añade** separadores en vez de sustituirlos (las cadenas quedan de distinto largo y con distinto conteo de `|`); y el campo final es un `Instant`, que no puede contener un delimitador, así que la cola de toda cadena canónica tiene formato restringido y no se puede forjar desde un campo libre. Además nada vuelve a parsear la forma canónica — solo se hashea y compara — así que la ambigüedad de parseo no tiene camino hacia una respuesta incorrecta
+  - **Registrado como propiedad, no como suposición:** `VerifactuCanonicalInjectionTest` (3 tests) fija que datos distintos producen forma canónica distinta. Esa seguridad depende del layout de campos actual y nada en el código la enuncia: añadir un campo de texto libre al final, hacer variable el conjunto de campos, o reordenar de modo que dos campos libres queden adyacentes la eliminaría en silencio. Ahora eso falla aquí y no en un registro fiscal años después
+  - Anotado explícitamente para no repetir el análisis: la conclusión honesta es "auditado, sin defecto", no "corregido"
+
+### Gherkin / BDD
+
+- [x] `reconciliation-safety.feature` — 6 escenarios que enuncian, en el lenguaje del problema fiscal y no del código, la regla que todo el diseño de reconciliación existe para proteger: un documento de suerte desconocida nunca se registra como uno sobre el que la autoridad se pronunció. Cubre los cuatro `QueryOutcome`, la propagación de advertencias y el escalado a `MANUAL_REVIEW`
+  - Los dobles registran el **orden** de llamadas, porque un escenario afirma algo que ningún retorno puede expresar: que se consultó al régimen antes de intentar emitir
+  - **Prueba de falsabilidad:** revertida la corrección F6 en `ReconcileInvoiceUseCase` → el escenario "una rechazo real, con sus razones" lo detectó (`expected: <1> but was: <0>`). Revertido
+
+---
+
 ## Orden de recorte acordado
 
 Si el presupuesto de siete días se agota, se recorta en este orden y no en otro:
